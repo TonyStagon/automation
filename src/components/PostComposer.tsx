@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { Facebook, Image, Send, Eye, EyeOff } from 'lucide-react';
-import { Post } from '../types';
+import { useState } from 'react';
+import { Image, Send, Eye, EyeOff, Facebook } from 'lucide-react';
+import type { Post } from '../types';
 
 interface PostComposerProps {
   onPostCreate: (post: Omit<Post, 'id' | 'createdAt'>, headlessMode: boolean) => void;

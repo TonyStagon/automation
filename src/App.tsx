@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Facebook, Bot, CheckCircle, XCircle, Loader } from 'lucide-react';
+import { useState } from 'react';
+import { Bot, CheckCircle, XCircle, Loader, Facebook } from 'lucide-react';
 import PostComposer from './components/PostComposer';
-import { Post } from './types';
+import type { Post } from '@/types';
 
 type PostStatus = 'idle' | 'posting' | 'success' | 'failed';
 
@@ -44,7 +44,7 @@ function App() {
         setStatusMessage(result.message || 'Failed to post to Facebook');
         setPosts([{ ...newPost, status: 'failed' }, ...posts]);
       }
-    } catch (error) {
+    } catch {
       setPostStatus('failed');
       setStatusMessage('Network error occurred');
       setPosts([{ ...newPost, status: 'failed' }, ...posts]);
