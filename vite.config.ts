@@ -5,11 +5,12 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  server: {
+    port: 5173,
+    host: true
+  },
   css: {
-    devSourcemap: true,
-    postcss: {
-      config: 'postcss.config.js'
-    }
+    devSourcemap: true
   },
   resolve: {
     alias: {

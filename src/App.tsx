@@ -72,6 +72,10 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Tailwind Test Div */}
+      <div className="fixed bottom-4 right-4 p-4 bg-blue-600 text-white rounded-lg shadow-lg">
+        Tailwind Test
+      </div>
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
