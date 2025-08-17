@@ -1,5 +1,12 @@
 import { Document, Types } from 'mongoose';
 
+declare global {
+  interface IBrowserAutomation {
+    closeBrowsers(): Promise<void>;
+    postToFacebook(content: string): Promise<void>;
+  }
+}
+
 export interface IPost extends Document {
   title: string;
   content: string;

@@ -1,6 +1,6 @@
 import express from 'express';
-import { browserAutomation } from '../services/BrowserAutomation';
-import { logger } from '../utils/logger';
+import { browserAutomation } from '../../services/BrowserAutomation';
+import { logger } from '../../utils/logger';
 
 const router = express.Router();
 

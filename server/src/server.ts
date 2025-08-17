@@ -4,14 +4,13 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import path from 'path';
 import { connectDatabase } from './config/database';
-import { schedulerService } from './services/SchedulerService';
-import { browserAutomation } from './services/BrowserAutomation';
+import { schedulerService } from '../services/SchedulerService';
+import { browserAutomation } from '../services/BrowserAutomation';
 import { apiLimiter } from './middleware/rateLimiter';
 import { responseHelpers } from './middleware/responseHelpers';
-import { logger } from './utils/logger';
+import { logger } from '../utils/logger';
 
 // Import routes
-import authRoutes from './routes/auth';
 import postRoutes from './routes/posts';
 
 // Load environment variables
@@ -80,7 +79,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// 404 handler - Fixed for Express v5.x
+// 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
@@ -88,25 +87,34 @@ app.use((req, res) => {
 // Start server
 const startServer = async () => {
   try {
-    // Connect to database
-    await connectDatabase();
+    // Connect to database (optional for basic automation)
+    try {
+      await connectDatabase();
+    } catch (error) {
+      logger.warn('Database connection failed, continuing without database:', error);
+    }
 
-    // Start scheduler service
-    schedulerService.start();
+    // Start scheduler service (optional)
+    try {
+      schedulerService.start();
+    } catch (error) {
+      logger.warn('Scheduler service failed to start, continuing without scheduler:', error);
+    }
 
     // Start HTTP server
     const server = app.listen(PORT, () => {
-      logger.info(`Server running on port ${PORT}`);
-      logger.info(`Environment: ${process.env.NODE_ENV}`);
-      logger.info(`Health check: http://localhost:${PORT}/health`);
+      logger.info(`🚀 Server running on port ${PORT}`);
+      logger.info(`📁 Environment: ${process.env.NODE_ENV}`);
+      logger.info(`🔍 Health check: http://localhost:${PORT}/health`);
+      logger.info(`🤖 Facebook automation ready!`);
     });
 
     // Handle server errors
     server.on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {
-        logger.error(`Port ${PORT} is already in use`);
+        logger.error(`❌ Port ${PORT} is already in use`);
       } else {
-        logger.error('Server error:', error);
+        logger.error('❌ Server error:', error);
       }
       process.exit(1);
     });
@@ -121,20 +129,20 @@ const startServer = async () => {
           logger.info('HTTP server closed');
         });
 
-        // Stop scheduler
-        schedulerService.stop();
+        // Stop scheduler (if running)
+        try {
+          schedulerService.stop();
+        } catch (error) {
+          logger.warn('Error stopping scheduler:', error);
+        }
 
         // Close browser instances
         await browserAutomation.closeBrowsers();
 
-        // Close database connection
-        const mongoose = await import('mongoose');
-        await mongoose.connection.close();
-
-        logger.info('Graceful shutdown completed');
+        logger.info('✅ Graceful shutdown completed');
         process.exit(0);
       } catch (error) {
-        logger.error('Error during graceful shutdown:', error);
+        logger.error('❌ Error during graceful shutdown:', error);
         process.exit(1);
       }
     };
@@ -145,7 +153,7 @@ const startServer = async () => {
 
     return server;
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
