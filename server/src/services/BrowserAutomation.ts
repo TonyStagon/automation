@@ -1,5 +1,5 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
-import { playwright, Browser as PlaywrightBrowser, Page as PlaywrightPage } from 'playwright';
+import { chromium, Browser as PlaywrightBrowser, Page as PlaywrightPage } from 'playwright';
 import { logger } from '../utils/logger';
 import { JobData, BrowserAutomationResult } from '../types';
 
@@ -34,7 +34,7 @@ export class BrowserAutomation {
         });
         logger.info('Puppeteer browser initialized');
       } else if (browserType === 'playwright' && !this.playwrightBrowser) {
-        this.playwrightBrowser = await playwright.chromium.launch({
+        this.playwrightBrowser = await chromium.launch({
           headless,
           args: [
             '--no-sandbox',
@@ -149,7 +149,7 @@ export class BrowserAutomation {
         await postButton.click();
         
         // Wait for post to be published
-        await page.waitForTimeout(3000);
+        await new Promise(resolve => setTimeout(resolve, 3000));
         
         logger.info('Facebook post published successfully');
         return {

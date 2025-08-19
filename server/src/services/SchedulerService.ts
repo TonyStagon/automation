@@ -1,5 +1,5 @@
 import { schedule, ScheduledTask } from 'node-cron';
-import { Post } from '../src/models/Post';
+import { Post } from '../models/Post';
 import { logger } from '../utils/logger';
 
 interface SchedulerOptions {

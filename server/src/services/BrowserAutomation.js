@@ -1,0 +1,227 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.browserAutomation = exports.BrowserAutomation = void 0;
+const puppeteer_1 = __importDefault(require("puppeteer"));
+const playwright_1 = require("playwright");
+const logger_1 = require("../src/utils/logger");
+class BrowserAutomation {
+    constructor() {
+        this.puppeteerBrowser = null;
+        this.playwrightBrowser = null;
+    }
+    static getInstance() {
+        if (!BrowserAutomation.instance) {
+            BrowserAutomation.instance = new BrowserAutomation();
+        }
+        return BrowserAutomation.instance;
+    }
+    async initializeBrowser(browserType = 'puppeteer', headless = true) {
+        try {
+            if (browserType === 'puppeteer' && !this.puppeteerBrowser) {
+                this.puppeteerBrowser = await puppeteer_1.default.launch({
+                    headless,
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
+                });
+                logger_1.logger.info('Puppeteer browser initialized');
+            }
+            else if (browserType === 'playwright' && !this.playwrightBrowser) {
+                this.playwrightBrowser = await playwright_1.chromium.launch({
+                    headless,
+                    args: [
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage'
+                    ]
+                });
+                logger_1.logger.info('Playwright browser initialized');
+            }
+        }
+        catch (error) {
+            logger_1.logger.error(`Error initializing ${browserType} browser:`, error);
+            throw error;
+        }
+    }
+    async postToFacebook(jobData, browserType = 'puppeteer', headless = true) {
+        let page = null;
+        try {
+            await this.initializeBrowser(browserType, headless);
+            if (browserType === 'puppeteer' && this.puppeteerBrowser) {
+                page = await this.puppeteerBrowser.newPage();
+                return await this.postToFacebookPuppeteer(page, jobData);
+            }
+            else if (browserType === 'playwright' && this.playwrightBrowser) {
+                page = await this.playwrightBrowser.newPage();
+                return await this.postToFacebookPlaywright(page, jobData);
+            }
+            throw new Error('Browser not initialized');
+        }
+        catch (error) {
+            logger_1.logger.error('Error posting to Facebook:', error);
+            return {
+                success: false,
+                platform: 'facebook',
+                message: 'Failed to post to Facebook',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+        finally {
+            if (page) {
+                await page.close();
+            }
+        }
+    }
+    async postToFacebookPuppeteer(page, jobData) {
+        try {
+            // Set user agent
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+            // Navigate to Facebook login
+            await page.goto('https://www.facebook.com/login', {
+                waitUntil: 'networkidle0',
+                timeout: 30000
+            });
+            // Login
+            const fbUsername = process.env.FB_USERNAME || process.env.FBusername;
+            const fbPassword = process.env.FB_PASSWORD || process.env.FBpassword;
+            if (!fbUsername || !fbPassword) {
+                throw new Error('Facebook credentials not configured');
+            }
+            await page.type('#email', fbUsername);
+            await page.type('#pass', fbPassword);
+            await page.click('#loginbutton');
+            // Wait for navigation after login
+            await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
+            // Check if login was successful (look for home page elements)
+            await page.waitForSelector('[role="main"]', { timeout: 10000 });
+            // Navigate to create post
+            await page.goto('https://www.facebook.com/', { waitUntil: 'networkidle0' });
+            // Wait for and click on "What's on your mind?" box
+            await page.waitForSelector('[role="button"][aria-label*="mind"]', { timeout: 10000 });
+            await page.click('[role="button"][aria-label*="mind"]');
+            // Wait for the post creation dialog
+            await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+            // Type the caption
+            const textArea = await page.waitForSelector('[role="textbox"][aria-label*="What"]');
+            if (textArea) {
+                await textArea.type(jobData.caption);
+            }
+            // Handle media upload if provided
+            if (jobData.media && jobData.media.length > 0) {
+                try {
+                    // Look for photo/video upload button
+                    const uploadButton = await page.$('[aria-label*="Photo/video"]');
+                    if (uploadButton) {
+                        // This is a simplified approach - in practice, you'd need to handle file uploads
+                        logger_1.logger.info('Media upload would be handled here');
+                    }
+                }
+                catch (error) {
+                    logger_1.logger.warn('Could not upload media:', error);
+                }
+            }
+            // Post the content
+            const postButton = await page.waitForSelector('[aria-label="Post"]', { timeout: 5000 });
+            if (postButton) {
+                await postButton.click();
+                // Wait for post to be published
+                await new Promise(resolve => setTimeout(resolve, 3000));
+                logger_1.logger.info('Facebook post published successfully');
+                return {
+                    success: true,
+                    platform: 'facebook',
+                    message: 'Post successfully published to Facebook',
+                    analytics: {
+                        reach: 0,
+                        likes: 0,
+                        comments: 0,
+                        impressions: 0
+                    }
+                };
+            }
+            throw new Error('Could not find post button');
+        }
+        catch (error) {
+            logger_1.logger.error('Error in Facebook posting process:', error);
+            return {
+                success: false,
+                platform: 'facebook',
+                message: 'Failed to post to Facebook',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+    async postToFacebookPlaywright(page, jobData) {
+        // Similar implementation but using Playwright API
+        try {
+            const fbUsername = process.env.FB_USERNAME || process.env.FBusername;
+            const fbPassword = process.env.FB_PASSWORD || process.env.FBpassword;
+            if (!fbUsername || !fbPassword) {
+                throw new Error('Facebook credentials not configured');
+            }
+            await page.goto('https://www.facebook.com/login');
+            await page.fill('#email', fbUsername);
+            await page.fill('#pass', fbPassword);
+            await page.click('#loginbutton');
+            await page.waitForLoadState('networkidle');
+            // Navigate to home and create post
+            await page.goto('https://www.facebook.com/');
+            await page.click('[role="button"][aria-label*="mind"]');
+            // Wait for dialog and fill content
+            await page.waitForSelector('[role="dialog"]');
+            await page.fill('[role="textbox"][aria-label*="What"]', jobData.caption);
+            // Post
+            await page.click('[aria-label="Post"]');
+            await page.waitForTimeout(3000);
+            return {
+                success: true,
+                platform: 'facebook',
+                message: 'Post successfully published to Facebook',
+                analytics: {
+                    reach: 0,
+                    likes: 0,
+                    comments: 0,
+                    impressions: 0
+                }
+            };
+        }
+        catch (error) {
+            logger_1.logger.error('Error in Facebook posting process (Playwright):', error);
+            return {
+                success: false,
+                platform: 'facebook',
+                message: 'Failed to post to Facebook',
+                error: error instanceof Error ? error.message : 'Unknown error'
+            };
+        }
+    }
+    async closeBrowsers() {
+        try {
+            if (this.puppeteerBrowser) {
+                await this.puppeteerBrowser.close();
+                this.puppeteerBrowser = null;
+                logger_1.logger.info('Puppeteer browser closed');
+            }
+            if (this.playwrightBrowser) {
+                await this.playwrightBrowser.close();
+                this.playwrightBrowser = null;
+                logger_1.logger.info('Playwright browser closed');
+            }
+        }
+        catch (error) {
+            logger_1.logger.error('Error closing browsers:', error);
+        }
+    }
+}
+exports.BrowserAutomation = BrowserAutomation;
+exports.browserAutomation = BrowserAutomation.getInstance();
+//# sourceMappingURL=BrowserAutomation.js.map

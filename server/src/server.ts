@@ -5,11 +5,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { connectDatabase } from './config/database';
-import { schedulerService } from '../services/SchedulerService';
-import { browserAutomation } from '../services/BrowserAutomation';
+import { schedulerService } from './services/SchedulerService';
+import { browserAutomation } from './services/BrowserAutomation';
 import { apiLimiter } from './middleware/rateLimiter';
 import { responseHelpers } from './middleware/responseHelpers';
-import { logger } from '../utils/logger';
+import { logger } from './utils/logger';
 
 // Import routes
 import authRoutes from './routes/auth';

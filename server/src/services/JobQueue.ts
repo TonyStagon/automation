@@ -220,7 +220,7 @@ export class JobQueue {
         this.postQueue.getCompleted(),
         this.postQueue.getFailed(),
         this.postQueue.getDelayed(),
-        this.postQueue.getPaused(),
+        this.postQueue.getWaiting(),
       ]);
 
       return {

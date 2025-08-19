@@ -2,8 +2,8 @@ import express from 'express';
 import { Post } from '../models/Post';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { postLimiter } from '../middleware/rateLimiter';
-import { browserAutomation } from '../../services/BrowserAutomation';
-import { logger } from '../../utils/logger';
+import { browserAutomation } from '../services/BrowserAutomation';
+import { logger } from '../utils/logger';
 
 const router = express.Router();
 
