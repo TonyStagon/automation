@@ -1,34 +1,21 @@
 import { Request, Response } from 'express';
-import { Document, ObjectId } from 'mongoose';
-
-interface BaseReqParams {
-  id?: string;
-  [key: string]: string | undefined;
-}
-
-interface BaseReqQueries {
-  [key: string]: string | string[] | undefined;
-}
+import { Document } from 'mongoose';
+import { IUserDocument } from '../models/User';
+import { IPost } from './models';
 
 export interface JwtPayload {
-  userId: ObjectId;
+  userId: string;
   email: string;
 }
 
-export interface AppResponse<T = unknown> extends Response {
-  deliver(data?: T): Promise<this>;
-}
+export type AppResponse<T = unknown> = Response & {
+  deliver(data?: T): Promise<Response>;
+};
 
-export interface AuthRequest<
-  P extends object = object, 
-  Q extends object = object, 
-  B extends object = object
-> extends Request {
-  auth: JwtPayload;
-  params: P & BaseReqParams;
-  query: Q & BaseReqQueries;
-  body: B;
-}
+export type AuthRequest = Request & {
+  auth?: JwtPayload;
+  user?: IUserDocument;
+};
 
 export interface JobData {
   postId: string;
@@ -73,28 +60,8 @@ export interface AutomationSettings {
   updatedAt: Date;
 }
 
-// Post Model Interface
-export interface IPost {
-  _id: ObjectId;
-  title: string;
-  content: string;
-  caption?: string;
-  media?: string[];
-  status: 'draft' | 'published' | 'scheduled' | 'failed' | 'archived';
-  userId: ObjectId;
-  platforms: string[];
-  scheduledDate?: Date;
-  analytics?: {
-    reach: number;
-    likes: number;
-    comments: number;
-    impressions: number;
-  };
-  createdAt: Date;
-  updatedAt: Date;
-  errorMessage?: string;
-}
-
+// Post Model from models.ts
+export type { IPost };
 export type PostDocument = IPost & Document;
 
 // Route-specific interfaces

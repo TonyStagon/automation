@@ -1,4 +1,10 @@
-import { ObjectId } from 'mongoose';
+import { Types } from 'mongoose';
+
+export interface AuthenticatedUser {
+  _id: Types.ObjectId;
+  id: string;
+  email: string;
+}
 
 declare global {
   namespace Express {
@@ -7,17 +13,11 @@ declare global {
     }
     
     interface Request {
-      auth?: { 
-        userId: ObjectId;
+      auth?: {
+        userId: string;
         email: string;
-      }
+      };
+      user?: AuthenticatedUser;
     }
   }
-}
-
-export interface PostStatusResponse {
-  id: string;
-  title: string;
-  status: 'draft' | 'published' | 'archived' | 'failed' | 'scheduled'; 
-  content: string;
 }

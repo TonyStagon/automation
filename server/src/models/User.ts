@@ -68,4 +68,5 @@ userSchema.methods.addSocialAccount = function (account: SocialAccount) {
   }
 };
 
+export type { IUserDocument };
 export const User = mongoose.model<IUserDocument>('User', userSchema);

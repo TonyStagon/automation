@@ -1,17 +1,10 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User';
 import { logger } from '../utils/logger';
+import { AuthRequest } from '../types';
 
-export interface AuthRequest extends Request {
-  user?: any;
-  auth?: {
-    userId: string;
-    email: string;
-  };
-}
-
-export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction): Promise<unknown> => {
   try {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -37,7 +30,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     }
 
     req.user = user;
-    next();
+    return next();
   } catch (error) {
     logger.error('Authentication error:', error);
     res.status(403).json({ error: 'Invalid or expired token' });
