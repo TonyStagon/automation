@@ -110,18 +110,82 @@ export class BrowserAutomation {
       // Wait for navigation after login
       await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
 
-      // Check if login was successful (look for home page elements)
-      await page.waitForSelector('[role="main"]', { timeout: 10000 });
+      // Check if login was successful (look for home page elements or alternative selectors)
+      // Facebook may use different selectors based on layout
+      try {
+        await page.waitForSelector('[role="main"]', { timeout: 5000 });
+      } catch {
+        // Fallback selectors if [role="main"] is not found
+        try {
+          await page.waitForSelector('[data-pagelet="MainFeed"]', { timeout: 3000 });
+        } catch {
+          try {
+            await page.waitForSelector('[aria-label="Facebook"]', { timeout: 3000 });
+          } catch {
+            // If login fails, Facebook might show an error message
+            const errorText = await page.evaluate(() => {
+              return document.body.textContent || '';
+            });
+            
+            if (errorText.includes('incorrect') || errorText.includes('error')) {
+              throw new Error('Facebook login failed - check your credentials');
+            }
+            
+            // If no specific error found but can't load main page, wait a bit and continue
+            await page.waitForTimeout(2000);
+          }
+        }
+      }
 
       // Navigate to create post
       await page.goto('https://www.facebook.com/', { waitUntil: 'networkidle0' });
 
-      // Wait for and click on "What's on your mind?" box
-      await page.waitForSelector('[role="button"][aria-label*="mind"]', { timeout: 10000 });
-      await page.click('[role="button"][aria-label*="mind"]');
-
-      // Wait for the post creation dialog
-      await page.waitForSelector('[role="dialog"]', { timeout: 10000 });
+      // Try multiple selectors for "What's on your mind" button with fallbacks
+      let foundPostButton = false;
+      const postButtonSelectors = [
+        '[role="button"][aria-label*="mind"]',
+        '[aria-label="Create"]',
+        'text="What\'s on your mind"',
+        '.x1lq5wgf.xgqcy7u.x30kzoy.x9jhf4c.x1lliihq', // Common Facebook class pattern
+        '[data-pagelet="ProfileComposer"]' // Profile composer element
+      ];
+      
+      for (const selector of postButtonSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 3000 });
+          await page.click(selector);
+          foundPostButton = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+      
+      if (!foundPostButton) {
+        throw new Error('Could not find post creation button on Facebook');
+      }
+      
+      // Wait for dialog with multiple selector options
+      const dialogSelectors = [
+        '[role="dialog"]',
+        '[aria-label="Create a post"]',
+        '[data-pagelet="Composer"]'
+      ];
+      
+      let foundDialog = false;
+      for (const selector of dialogSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 5000 });
+          foundDialog = true;
+          break;
+        } catch {
+          continue;
+        }
+      }
+      
+      if (!foundDialog) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
 
       // Type the caption
       const textArea = await page.waitForSelector('[role="textbox"][aria-label*="What"]');
@@ -195,13 +259,54 @@ export class BrowserAutomation {
       
       await page.waitForLoadState('networkidle');
       
-      // Navigate to home and create post
-      await page.goto('https://www.facebook.com/');
-      await page.click('[role="button"][aria-label*="mind"]');
+      // Give more time for login processing
+      await page.waitForTimeout(3000);
       
-      // Wait for dialog and fill content
-      await page.waitForSelector('[role="dialog"]');
-      await page.fill('[role="textbox"][aria-label*="What"]', jobData.caption);
+      // Navigate to home and create post - verify we're on Facebook first
+      await page.goto('https://www.facebook.com/');
+      
+      // Try multiple selectors for "What's on your mind" button
+      try {
+        await page.click('[role="button"][aria-label*="mind"]');
+      } catch {
+        try {
+          await page.click('[aria-label="Create"]');
+        } catch {
+          try {
+            await page.click('text="What\'s on your mind"');
+          } catch {
+            throw new Error('Could not find post creation button');
+          }
+        }
+      }
+      
+      // Wait for dialog with multiple selector options
+      try {
+        await page.waitForSelector('[role="dialog"]', { timeout: 5000 });
+      } catch {
+        try {
+          await page.waitForSelector('[aria-label="Create a post"]', { timeout: 3000 });
+        } catch {
+          await page.waitForSelector('.x1lq5wgf.xgqcy7u.x30kzoy.x9jhf4c.x1lliihq', { timeout: 3000 });
+        }
+      }
+      
+      // Find and fill textarea with multiple selector options
+      try {
+        await page.fill('[role="textbox"][aria-label*="What"]', jobData.caption);
+      } catch {
+        try {
+          await page.fill('[contenteditable="true"]', jobData.caption);
+        } catch {
+          // Fallback: add script to directly set the value in any contenteditable
+          await page.evaluate((caption: string) => {
+            const editor = document.querySelector('[contenteditable="true"]');
+            if (editor) {
+              editor.textContent = caption;
+            }
+          }, jobData.caption);
+        }
+      }
       
       // Post
       await page.click('[aria-label="Post"]');
