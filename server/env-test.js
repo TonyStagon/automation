@@ -2,7 +2,7 @@
 // Run this with: node env-test.js
 
 require('dotenv').config();
-
+w
 console.log('🔍 Environment Variables Check:');
 console.log('================================');
 

@@ -12,7 +12,9 @@
     },
     "dependencies": {
         "dotenv": "^17.2.1",
+        "fs-extra": "^11.3.1",
         "lucide-react": "^0.539.0",
+        "puppeteer": "^24.16.2",
         "react": "^19.1.1",
         "react-dom": "^19.1.1",
         "tailwindcss": "^3.4.17"
