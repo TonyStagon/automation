@@ -7,6 +7,8 @@ import { logger } from '../utils/logger';
 const router = express.Router();
 
 // Get automation settings
+// Temporarily comment out authenticated routes for testing
+/*
 router.get('/settings', authenticateToken, async (req: AuthRequest, res) => {
   try {
     let settings = await AutomationSettings.findOne({ userId: req.user.id });
@@ -29,6 +31,7 @@ router.get('/settings', authenticateToken, async (req: AuthRequest, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+*/
 
 // Update automation settings
 router.put('/settings', authenticateToken, async (req: AuthRequest, res) => {
@@ -147,6 +150,41 @@ router.get('/platforms', authenticateToken, async (req: AuthRequest, res) => {
   } catch (error) {
     logger.error('Error fetching platforms:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+import { exec } from 'child_process';
+import path from 'path';
+
+// Run Facebook debug script temporarily
+router.post('/run-facebook-debug', async (req, res) => {
+  try {
+    const scriptPath = path.join(__dirname, '../../../facebook-login-post-test.js');
+    const caption = req.body.caption || 'Hello I am New Here';
+    
+    // Escape the caption for command line to handle special characters
+    const escapedCaption = caption.replace(/"/g, '\\"');
+    exec(`node ${scriptPath} "${escapedCaption}"`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error running Facebook debug script:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to run script',
+          details: stderr
+        });
+      }
+      res.json({
+        success: true,
+        output: stdout,
+        message: 'Facebook debug script executed successfully'
+      });
+    });
+  } catch (error) {
+    console.error('Error in run-facebook-debug:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
   }
 });
 

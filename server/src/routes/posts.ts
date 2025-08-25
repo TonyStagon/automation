@@ -4,6 +4,8 @@ import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { postLimiter } from '../middleware/rateLimiter';
 import { browserAutomation } from '../services/BrowserAutomation';
 import { logger } from '../utils/logger';
+import { exec } from 'child_process';
+import path from 'path';
 
 const router = express.Router();
 
@@ -12,7 +14,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const { status, limit = '10', offset = '0' } = req.query;
     
-    const query: any = { userId: req.user.id };
+    const query: { userId: string; status?: string } = { userId: req.user.id };
     if (status && typeof status === 'string') {
       query.status = status;
     }
@@ -265,6 +267,73 @@ router.get('/:id/analytics', authenticateToken, async (req: AuthRequest, res) =>
   } catch (error) {
     logger.error('Error fetching post analytics:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// New endpoint to execute Facebook automation script directly
+router.post('/facebook/direct', async (req, res) => {
+  try {
+    const { caption, headlessMode = false } = req.body;
+
+    if (!caption) {
+      return res.status(400).json({
+        success: false,
+        message: 'Caption is required'
+      });
+    }
+
+    logger.info('Starting direct Facebook automation', {
+      captionLength: caption.length,
+      headlessMode,
+      userId: req.user.id
+    });
+
+    // Execute the Facebook automation script as a child process
+    
+    // Build the command to execute the script
+    const scriptPath = path.join(__dirname, '..', '..', '..', 'facebook-login-post-test.js');
+    const headlessFlag = headlessMode ? 'HEADLESS=true' : 'HEADLESS=false';
+    
+    // Escape caption for command line
+    const escapedCaption = caption.replace(/"/g, '\\"');
+    
+    const command = `${headlessFlag} node "${scriptPath}" "${escapedCaption}"`;
+
+    exec(command, (error: Error | null, stdout: string, stderr: string) => {
+      if (error) {
+        logger.error('Facebook automation script failed:', { error, stdout, stderr });
+        return res.status(500).json({
+          success: false,
+          message: 'Facebook automation failed',
+          error: stderr || error.message
+        });
+      }
+
+      // Check if the script completed successfully
+      if (stdout.includes('✅ Script completed successfully')) {
+        logger.info('Facebook automation completed successfully', { stdout });
+        res.json({
+          success: true,
+          message: 'Post successfully published to Facebook',
+          output: stdout
+        });
+      } else {
+        logger.error('Facebook automation completed with errors', { stdout, stderr });
+        res.status(500).json({
+          success: false,
+          message: 'Facebook automation completed with errors',
+          error: stdout + stderr
+        });
+      }
+    });
+
+  } catch (error) {
+    logger.error('Facebook direct automation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

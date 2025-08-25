@@ -2,12 +2,12 @@ import puppeteer from 'puppeteer';
 import fs from 'fs-extra';
 import path from 'path';
 
-// Configuration
-const HEADLESS = false; // VISIBLE browser for debugging
+// Configuration - now accepts command line arguments or environment variables
+const HEADLESS = process.env.HEADLESS === 'true' || false; // Default to visible for debugging
 const SCREENSHOT_DIR = './debug-screenshots';
 const FB_URL = 'https://www.facebook.com/login';
-const FB_USERNAME = 'rtester535@gmail.com';
-const FB_PASSWORD = 'Unicorn25$';
+const FB_USERNAME = process.env.FB_USERNAME || 'rtester535@gmail.com';
+const FB_PASSWORD = process.env.FB_PASSWORD || 'Unicorn25$';
 
 // Enhanced detection bypass techniques
 const BYPASS_TECHNIQUES = {
@@ -553,7 +553,7 @@ class FacebookDebugPro {
     }
   }
 
-  async runComprehensiveTest() {
+  async runComprehensiveTest(caption = 'Hello I am New Here') {
     try {
       await this.initialize();
       console.log('🚀 Starting Facebook PRO debugging session...');
@@ -567,7 +567,7 @@ class FacebookDebugPro {
           elements.loginButtonSelectors.length === 0) {
         console.log('❌ Insufficient login elements found - Facebook layout may have changed');
         await this.logStep('Login Element Discovery', false, 'Insufficient elements found');
-        return;
+        return { success: false, error: 'Insufficient login elements found' };
       }
       
       // Attempt intelligent login
@@ -591,21 +591,23 @@ class FacebookDebugPro {
         
         if (await this.handleSecurityChallenge()) {
           // AFTER SUCCESSFUL LOGIN & NO SECURITY CHALLENGE - CREATE A POST
-          const postMessage = 'Hello I am New Here';
-          const postSuccess = await this.postToFacebook(postMessage);
+          const postSuccess = await this.postToFacebook(caption);
           
           if (postSuccess) {
-            await this.logStep('Facebook Post Creation', true, `Posted: "${postMessage}"`);
+            await this.logStep('Facebook Post Creation', true, `Posted: "${caption}"`);
             console.log('\n🎉 SUCCESSFUL SOCIAL AUTOMATION WORKFLOW:');
             console.log('1. ✅ Intelligent login bypassed Facebook security');
             console.log('2. ✅ Automated post creation completed');
-            console.log('3. ✅ Post content: "Hello I am New Here"');
+            console.log('3. ✅ Post content:', caption);
+            return { success: true, message: `Posted: "${caption}"` };
           } else {
             await this.logStep('Facebook Post Creation', false, 'Could not create post - potential security block');
             console.log('\n⚠️ Login succeeded but post creation failed - possible security block');
+            return { success: false, error: 'Post creation failed' };
           }
         } else {
           console.log('\n🛑 Security challenge triggered - manual intervention required before posting');
+          return { success: false, error: 'Security challenge detected' };
         }
         
         console.log('\n📋 Manual Testing Commands:');
@@ -615,6 +617,7 @@ class FacebookDebugPro {
         console.log('• Check for security dialogs or 2FA prompts');
       } else {
         await this.logStep('PRO Login Automation', false, 'Login failed - check browser for manual intervention');
+        return { success: false, error: 'Login failed' };
       }
       
       console.log('\n💡 PRO TIPS:');
@@ -630,6 +633,7 @@ class FacebookDebugPro {
       
     } catch (error) {
       console.error('❌ Debug session failed:', error);
+      return { success: false, error: error.message };
     } finally {
       if (this.browser) {
         await this.browser.close();
@@ -639,8 +643,28 @@ class FacebookDebugPro {
   }
 }
 
-// Run the debugger
-const debuggerInstance = new FacebookDebugPro();
-debuggerInstance.runComprehensiveTest()
-  .catch(console.error)
-  .finally(() => process.exit(0));
+// Export the class for use in other modules
+export { FacebookDebugPro };
+
+// Run the debugger if called directly from command line or with arguments
+if (import.meta.url === `file://${process.argv[1]}` || process.argv.length > 2) {
+  const debuggerInstance = new FacebookDebugPro();
+  
+  // Get caption from command line arguments or use default
+  const caption = process.argv[2] || 'Hello I am New Here';
+  
+  debuggerInstance.runComprehensiveTest(caption)
+    .then(result => {
+      if (result && result.success) {
+        console.log('✅ Script completed successfully');
+        process.exit(0);
+      } else {
+        console.log('❌ Script failed:', result?.error || 'Unknown error');
+        process.exit(1);
+      }
+    })
+    .catch(error => {
+      console.error('❌ Unhandled error:', error);
+      process.exit(1);
+    });
+}

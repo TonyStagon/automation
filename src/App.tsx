@@ -9,8 +9,10 @@ function App() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [postStatus, setPostStatus] = useState<PostStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
+  const [debugStatus, setDebugStatus] = useState<'idle' | 'launching' | 'success' | 'failed'>('idle');
+  const [debugMessage, setDebugMessage] = useState('');
 
-  const handlePostCreate = async (postData: Omit<Post, 'id' | 'createdAt'>, headlessMode: boolean) => {
+  const handlePostCreate = async (postData: Omit<Post, 'id' | 'createdAt'>) => {
     const newPost: Post = {
       ...postData,
       id: Date.now().toString(),
@@ -21,15 +23,13 @@ function App() {
     setStatusMessage('Starting Facebook automation...');
 
     try {
-      const response = await fetch('/api/posts/facebook', {
+      const response = await fetch('/api/automation/run-facebook-debug', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           caption: newPost.caption,
-          media: newPost.media,
-          headlessMode,
         }),
       });
 
@@ -60,6 +60,55 @@ function App() {
   const getStatusIcon = () => {
     switch (postStatus) {
       case 'posting':
+        return <Loader className="w-6 h-6 text-blue-600 animate-spin" />;
+      case 'success':
+        return <CheckCircle className="w-6 h-6 text-green-600" />;
+      case 'failed':
+        return <XCircle className="w-6 h-6 text-red-600" />;
+      default:
+        return null;
+    }
+  };
+
+  const handleLaunchChromium = async () => {
+    setDebugStatus('launching');
+    setDebugMessage('Launching Chromium debug session...');
+
+    try {
+      const response = await fetch('/api/automation/run-facebook-debug', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          caption: 'Debug test post'
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setDebugStatus('success');
+        setDebugMessage('Chromium launched successfully! Check the browser window.');
+      } else {
+        setDebugStatus('failed');
+        setDebugMessage(result.error || 'Failed to launch Chromium');
+      }
+    } catch {
+      setDebugStatus('failed');
+      setDebugMessage('Network error occurred');
+    }
+
+    // Reset status after 5 seconds
+    setTimeout(() => {
+      setDebugStatus('idle');
+      setDebugMessage('');
+    }, 5000);
+  };
+
+  const getDebugStatusIcon = () => {
+    switch (debugStatus) {
+      case 'launching':
         return <Loader className="w-6 h-6 text-blue-600 animate-spin" />;
       case 'success':
         return <CheckCircle className="w-6 h-6 text-green-600" />;
@@ -119,11 +168,64 @@ function App() {
         </div>
       )}
 
+      {/* Debug Status Bar */}
+      {debugStatus !== 'idle' && (
+        <div className={`border-b ${
+          debugStatus === 'launching' ? 'bg-blue-50 border-blue-200' :
+          debugStatus === 'success' ? 'bg-green-50 border-green-200' :
+          'bg-red-50 border-red-200'
+        }`}>
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <div className="flex items-center">
+              {getDebugStatusIcon()}
+              <span className={`ml-3 text-sm font-medium ${
+                debugStatus === 'launching' ? 'text-blue-800' :
+                debugStatus === 'success' ? 'text-green-800' :
+                'text-red-800'
+              }`}>
+                {debugMessage}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
           {/* Post Composer */}
           <PostComposer onPostCreate={handlePostCreate} isPosting={postStatus === 'posting'} />
+
+          {/* Launch Chromium Button */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center mb-6">
+              <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-2 rounded-lg mr-3">
+                <Bot className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Debug Tools</h2>
+            </div>
+            
+            <button
+              onClick={handleLaunchChromium}
+              disabled={debugStatus === 'launching'}
+              className="w-full bg-gradient-to-r from-purple-600 to-purple-700 text-white py-3 px-4 rounded-lg font-medium hover:from-purple-700 hover:to-purple-800 focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center"
+            >
+              {debugStatus === 'launching' ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Launching Chromium...
+                </>
+              ) : (
+                <>
+                  <Bot className="w-4 h-4 mr-2" />
+                  Launch With Chromium
+                </>
+              )}
+            </button>
+            <p className="text-sm text-gray-500 mt-3 text-center">
+              Test the Facebook automation script with a visible browser
+            </p>
+          </div>
 
           {/* Recent Posts */}
           {posts.length > 0 && (
