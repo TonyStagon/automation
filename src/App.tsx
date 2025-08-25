@@ -23,7 +23,7 @@ function App() {
     setStatusMessage('Starting Facebook automation...');
 
     try {
-      const response = await fetch('/api/automation/run-facebook-debug', {
+      const response = await fetch('http://localhost:3002/api/automation/run-facebook-debug', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ function App() {
     setDebugMessage('Launching Chromium debug session...');
 
     try {
-      const response = await fetch('/api/automation/run-facebook-debug', {
+      const response = await fetch('http://localhost:3002/api/automation/run-facebook-debug', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

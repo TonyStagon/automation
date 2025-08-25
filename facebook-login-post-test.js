@@ -590,20 +590,37 @@ class FacebookDebugPro {
         
         
         if (await this.handleSecurityChallenge()) {
-          // AFTER SUCCESSFUL LOGIN & NO SECURITY CHALLENGE - CREATE A POST
-          const postSuccess = await this.postToFacebook(caption);
+          // AFTER SUCCESSFUL LOGIN & NO SECURITY CHALLENGE - CREATE A POST WITH RETRIES
+          const maxRetries = 3;
+          let postSuccess = false;
+          let retryCount = 0;
+          
+          while (!postSuccess && retryCount < maxRetries) {
+            retryCount++;
+            console.log(`\n🔄 Attempting post (${retryCount}/${maxRetries})...`);
+            postSuccess = await this.postToFacebook(caption);
+            
+            if (!postSuccess) {
+              console.log(`❌ Post attempt ${retryCount} failed`);
+              if (retryCount < maxRetries) {
+                console.log('⏳ Waiting 5 seconds before retry...');
+                await new Promise(resolve => setTimeout(resolve, 5000));
+              }
+            }
+          }
           
           if (postSuccess) {
-            await this.logStep('Facebook Post Creation', true, `Posted: "${caption}"`);
+            await this.logStep('Facebook Post Creation', true, `Posted: "${caption}" after ${retryCount} attempt(s)`);
             console.log('\n🎉 SUCCESSFUL SOCIAL AUTOMATION WORKFLOW:');
             console.log('1. ✅ Intelligent login bypassed Facebook security');
             console.log('2. ✅ Automated post creation completed');
             console.log('3. ✅ Post content:', caption);
-            return { success: true, message: `Posted: "${caption}"` };
+            console.log('4. ✅ Attempts:', retryCount);
+            return { success: true, message: `Posted: "${caption}" after ${retryCount} attempt(s)` };
           } else {
-            await this.logStep('Facebook Post Creation', false, 'Could not create post - potential security block');
-            console.log('\n⚠️ Login succeeded but post creation failed - possible security block');
-            return { success: false, error: 'Post creation failed' };
+            await this.logStep('Facebook Post Creation', false, `Failed after ${maxRetries} attempts - potential security block`);
+            console.log(`\n❌ Login succeeded but post creation failed after ${maxRetries} attempts`);
+            return { success: false, error: 'Post creation failed after retries' };
           }
         } else {
           console.log('\n🛑 Security challenge triggered - manual intervention required before posting');
@@ -635,9 +652,18 @@ class FacebookDebugPro {
       console.error('❌ Debug session failed:', error);
       return { success: false, error: error.message };
     } finally {
-      if (this.browser) {
+      // Only close browser if not in debug mode (headless false) and not explicitly told to keep open
+      const keepBrowserOpen = !HEADLESS || process.env.KEEP_BROWSER_OPEN === 'true';
+      
+      if (this.browser && !keepBrowserOpen) {
         await this.browser.close();
         console.log('🏁 Browser closed');
+      } else if (this.browser) {
+        console.log('🔵 Browser kept open for manual inspection...');
+        console.log('💡 Press Ctrl+C in terminal to close browser when done');
+        
+        // Keep process alive for manual interaction
+        await new Promise(() => {});
       }
     }
   }
