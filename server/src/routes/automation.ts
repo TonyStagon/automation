@@ -36,4 +36,36 @@ router.post('/run-facebook-debug', async (req, res) => {
   }
 });
 
+// Run Twitter debug script
+router.post('/run-twitter-debug', async (req, res) => {
+  try {
+    const scriptPath = path.join(__dirname, '../../../twitter-login-post-test.js');
+    const caption = req.body.caption || 'Hello I am New Here on Twitter!';
+    
+    // Escape the caption for command line to handle special characters
+    const escapedCaption = caption.replace(/"/g, '\\"');
+    exec(`node ${scriptPath} "${escapedCaption}"`, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error running Twitter debug script:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to run script',
+          details: stderr
+        });
+      }
+      res.json({
+        success: true,
+        output: stdout,
+        message: 'Twitter debug script executed successfully'
+      });
+    });
+  } catch (error) {
+    console.error('Error in run-twitter-debug:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 export default router;

@@ -1,5 +1,4 @@
-import { SocialPlatform, Post } from '../types';
-import { Instagram, Facebook, Twitter, Linkedin, Music } from 'lucide-react';
+import type { Post, SocialPlatform } from '../types';
 
 export const socialPlatforms: SocialPlatform[] = [
   {
@@ -55,15 +54,8 @@ export const mockPosts: Post[] = [
     caption: 'Excited to share our latest product launch! 🚀 #innovation #tech',
     media: 'https://images.pexels.com/photos/3184291/pexels-photo-3184291.jpeg',
     platforms: ['instagram', 'facebook', 'linkedin'],
-    scheduledDate: new Date(2025-1-20),
-    status: 'scheduled',
-    createdAt: new Date(2025-1-19),
-    analytics: {
-      reach: 0,
-      likes: 0,
-      comments: 0,
-      impressions: 0,
-    },
+    status: 'published',
+    createdAt: new Date(2025, 0, 19),
   },
   {
     id: '2',
@@ -71,25 +63,13 @@ export const mockPosts: Post[] = [
     media: 'https://images.pexels.com/photos/3184339/pexels-photo-3184339.jpeg',
     platforms: ['instagram', 'twitter'],
     status: 'published',
-    createdAt: new Date(2025-1-18),
-    analytics: {
-      reach: 1250,
-      likes: 89,
-      comments: 12,
-      impressions: 3400,
-    },
+    createdAt: new Date(2025, 0, 18),
   },
   {
     id: '3',
     caption: 'New blog post is live! Check it out 📝',
     platforms: ['twitter', 'linkedin'],
     status: 'failed',
-    createdAt: new Date(2025-1-17),
-    analytics: {
-      reach: 0,
-      likes: 0,
-      comments: 0,
-      impressions: 0,
-    },
+    createdAt: new Date(2025, 0, 17),
   },
 ];

@@ -80,16 +80,129 @@ app.use((error, req, res, next) => {
     });
 });
 
-// 404 handler
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Endpoint not found'
-    });
-});
+// Run Instagram debug script
+app.post('/api/automation/run-instagram-debug', async(req, res) => {
+            try {
+                const scriptPath = path.join(__dirname, '../instagram-login-post-test.js');
+                const caption = req.body.caption || 'Hello I am New Here';
 
-app.listen(PORT, () => {
-    console.log(`🚀 Automation server running on http://localhost:${PORT}`);
-    console.log(`📋 Health check: http://localhost:${PORT}/health`);
-    console.log(`🔧 Facebook debug endpoint: POST http://localhost:${PORT}/api/automation/run-facebook-debug`);
-});
+                console.log(`Executing Instagram debug script with caption: "${caption}"`);
+
+                // Escape the caption for command line to handle special characters
+                const escapedCaption = caption.replace(/"/g, '\\"');
+
+                // Set environment to keep browser open and run in non-headless mode
+                const env = {
+                    ...process.env,
+                    KEEP_BROWSER_OPEN: 'true',
+                    HEADLESS: 'false'
+                };
+
+                exec(`node ${scriptPath} "${escapedCaption}"`, { env }, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error('Error running Instagram debug script:', error);
+                        console.error('Stderr:', stderr);
+                        return res.status(500).json({
+                            success: false,
+                            error: 'Failed to run script',
+                            details: stderr || error.message
+                        });
+                    }
+
+                    console.log('Script output:', stdout);
+
+                    // Check if script completed successfully or if browser was kept open
+                    if (stdout.includes('Browser kept open') || stdout.includes('Posted:')) {
+                        res.json({
+                            success: true,
+                            output: stdout,
+                            message: 'Instagram automation completed - browser kept open for inspection'
+                        });
+                    } else {
+                        res.json({
+                                success: false,
+                                output: stdout,
+                                error: 'Script execution completed but may not have posted successfully'
+                            }
+                        });
+                } catch (error) {
+                    console.error('Error in run-instagram-debug:', error);
+                    res.status(500).json({
+                        success: false,
+                        error: 'Internal server error',
+                        details: error.message
+                    });
+                });
+
+            });
+
+        // Run Twitter debug script
+        app.post('/api/automation/run-twitter-debug', async(req, res) => {
+            try {
+                const scriptPath = path.join(__dirname, '../twitter-login-post-test.js');
+                const caption = req.body.caption || 'Hello I am New Here on Twitter!';
+
+                console.log(`Executing Twitter debug script with caption: "${caption}"`);
+
+                // Escape the caption for command line to handle special characters
+                const escapedCaption = caption.replace(/"/g, '\\"');
+
+                // Set environment to keep browser open and run in non-headless mode
+                const env = {
+                    ...process.env,
+                    KEEP_BROWSER_OPEN: 'true',
+                    HEADLESS: 'false'
+                };
+
+                exec(`node ${scriptPath} "${escapedCaption}"`, { env }, (error, stdout, stderr) => {
+                    if (error) {
+                        console.error('Error running Twitter debug script:', error);
+                        console.error('Stderr:', stderr);
+                        return res.status(500).json({
+                            success: false,
+                            error: 'Failed to run script',
+                            details: stderr || error.message
+                        });
+                    }
+
+                    console.log('Script output:', stdout);
+
+                    // Check if script completed successfully or if browser was kept open
+                    if (stdout.includes('Browser will stay open') || stdout.includes('SUCCESSFUL SOCIAL AUTOMATION') || stdout.includes('Posted:')) {
+                        res.json({
+                            success: true,
+                            output: stdout,
+                            message: 'Twitter automation completed - browser kept open for inspection'
+                        });
+                    } else {
+                        res.json({
+                            success: false,
+                            output: stdout,
+                            error: 'Script execution completed but may not have posted successfully on Twitter'
+                        });
+                    }
+                });
+            } catch (error) {
+                console.error('Error in run-twitter-debug:', error);
+                res.status(500).json({
+                    success: false,
+                    error: 'Internal server error',
+                    details: error.message
+                });
+            }
+        });
+
+        // 404 handler
+        app.use((req, res) => {
+            res.status(404).json({
+                success: false,
+                error: 'Endpoint not found'
+            });
+        });
+
+        app.listen(PORT, () => {
+            console.log(`🚀 Automation server running on http://localhost:${PORT}`);
+            console.log(`📋 Health check: http://localhost:${PORT}/health`);
+            console.log(`🔧 Facebook debug endpoint: POST http://localhost:${PORT}/api/automation/run-facebook-debug`);
+            console.log(`📸 Instagram debug endpoint: POST http://localhost:${PORT}/api/automation/run-instagram-debug`);
+        });
