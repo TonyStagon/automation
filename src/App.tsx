@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Bot, CheckCircle, XCircle, Loader, Facebook } from 'lucide-react';
 import PostComposer from './components/PostComposer';
 import PlatformSelector from './components/PlatformSelector';
 import type { Post } from '@/types';
+import { LocalStorageService } from './services/localStorageService';
 
 type PostStatus = 'idle' | 'posting' | 'success' | 'failed';
 
@@ -13,6 +14,15 @@ function App() {
   const [debugStatus, setDebugStatus] = useState<'idle' | 'launching' | 'success' | 'failed'>('idle');
   const [debugMessage, setDebugMessage] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['facebook']);
+
+  // Load posts from localStorage on component mount
+  useEffect(() => {
+    const loadPosts = async () => {
+      const storedPosts = await LocalStorageService.getPosts();
+      setPosts(storedPosts);
+    };
+    loadPosts();
+  }, []);
 
   const handlePostCreate = async (postData: Omit<Post, 'id' | 'createdAt' | 'platforms'>, headlessMode: boolean) => {
     const newPost: Post = {
@@ -81,17 +91,26 @@ function App() {
 
     // Update status based on results
     if (successCount > 0 && failCount === 0) {
+      const publishedPost = { ...newPost, status: 'published' as const };
       setPostStatus('success');
       setStatusMessage(`Successfully published to ${successCount} platform(s)!`);
-      setPosts([{ ...newPost, status: 'published' }, ...posts]);
+      setPosts([publishedPost, ...posts]);
+      // Save to localStorage
+      await LocalStorageService.savePost(newPost, selectedPlatforms);
     } else if (successCount > 0) {
+      const publishedPost = { ...newPost, status: 'published' as const };
       setPostStatus('success');
       setStatusMessage(`Published to ${successCount} platform(s), failed on ${failCount}.`);
-      setPosts([{ ...newPost, status: 'published' }, ...posts]);
+      setPosts([publishedPost, ...posts]);
+      // Save to localStorage
+      await LocalStorageService.savePost(newPost, selectedPlatforms);
     } else {
+      const failedPost = { ...newPost, status: 'failed' as const };
       setPostStatus('failed');
       setStatusMessage('Failed to publish to any platforms.');
-      setPosts([{ ...newPost, status: 'failed' }, ...posts]);
+      setPosts([failedPost, ...posts]);
+      // Save failed attempt to localStorage
+      await LocalStorageService.savePost(newPost, selectedPlatforms);
     }
 
     // Reset status after 5 seconds
