@@ -6,8 +6,8 @@ import path from 'path';
 const HEADLESS = process.env.HEADLESS === 'true' || false; // Default to visible for debugging
 const SCREENSHOT_DIR = './debug-screenshots';
 const FB_URL = 'https://www.facebook.com/login';
-const FB_USERNAME = process.env.FB_USERNAME || 'rtester535@gmail.com';
-const FB_PASSWORD = process.env.FB_PASSWORD || 'Unicorn25$';
+const FB_USERNAME = process.env.FB_USERNAME || process.env.FBusername || '';
+const FB_PASSWORD = process.env.FB_PASSWORD || process.env.FBpassword || '';
 
 // Enhanced detection bypass techniques
 const BYPASS_TECHNIQUES = {
@@ -570,6 +570,16 @@ class FacebookDebugPro {
         return { success: false, error: 'Insufficient login elements found' };
       }
       
+      // Check if credentials are available
+      if (!FB_USERNAME || !FB_PASSWORD) {
+        console.log('❌ Facebook credentials not configured');
+        console.log('💡 Set environment variables:');
+        console.log('   - FB_USERNAME or FBusername');
+        console.log('   - FB_PASSWORD or FBpassword');
+        await this.logStep('Login Automation', false, 'Credentials not configured');
+        return { success: false, error: 'Facebook credentials not configured' };
+      }
+
       // Attempt intelligent login
       const loginSuccess = await this.attemptLoginWithSelectors(
         FB_USERNAME,

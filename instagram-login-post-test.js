@@ -6,8 +6,8 @@ import path from 'path';
 const HEADLESS = false; // VISIBLE browser for debugging
 const SCREENSHOT_DIR = './debug-screenshots';
 const INSTAGRAM_URL = 'https://www.instagram.com/accounts/login/';
-const INSTAGRAM_USERNAME = 'botusertest'; // Replace with actual credentials
-const INSTAGRAM_PASSWORD = '13Party@'; // Replace with actual credentials
+const INSTAGRAM_USERNAME = process.env.INSTAGRAM_USERNAME || process.env.IG_USERNAME || '';
+const INSTAGRAM_PASSWORD = process.env.INSTAGRAM_PASSWORD || process.env.IG_PASSWORD || '';
 
 // Enhanced detection bypass techniques
 const BYPASS_TECHNIQUES = {
@@ -554,6 +554,15 @@ class InstagramDebugPro {
 
     async runComprehensiveTest() {
         try {
+            // Check if credentials are available
+            if (!INSTAGRAM_USERNAME || !INSTAGRAM_PASSWORD) {
+                console.log('❌ Instagram credentials not configured');
+                console.log('💡 Set environment variables:');
+                console.log('   - INSTAGRAM_USERNAME or IG_USERNAME');
+                console.log('   - INSTAGRAM_PASSWORD or IG_PASSWORD');
+                return;
+            }
+            
             await this.initialize();
             console.log('🚀 Starting Instagram PRO debugging session...');
             console.log('📝 Focusing on debug route only ⚠️');

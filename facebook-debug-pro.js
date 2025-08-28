@@ -6,8 +6,8 @@ import path from 'path';
 const HEADLESS = false; // VISIBLE browser for debugging
 const SCREENSHOT_DIR = './debug-screenshots';
 const FB_URL = 'https://www.facebook.com/login';
-const FB_USERNAME = 'rtester535@gmail.com';
-const FB_PASSWORD = 'Unicorn25$';
+const FB_USERNAME = process.env.FB_USERNAME || process.env.FBusername || '';
+const FB_PASSWORD = process.env.FB_PASSWORD || process.env.FBpassword || '';
 
 // Enhanced detection bypass techniques
 const BYPASS_TECHNIQUES = {
@@ -478,6 +478,15 @@ class FacebookDebugPro {
 
   async runComprehensiveTest() {
     try {
+      // Check if credentials are available
+      if (!FB_USERNAME || !FB_PASSWORD) {
+        console.log('❌ Facebook credentials not configured');
+        console.log('💡 Set environment variables:');
+        console.log('   - FB_USERNAME or FBusername');
+        console.log('   - FB_PASSWORD or FBpassword');
+        return;
+      }
+      
       await this.initialize();
       console.log('🚀 Starting Facebook PRO debugging session...');
       

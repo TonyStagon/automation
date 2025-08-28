@@ -6,8 +6,8 @@ import path from 'path';
 const HEADLESS = false; // VISIBLE browser for debugging
 const SCREENSHOT_DIR = './debug-screenshots';
 const TWITTER_URL = 'https://twitter.com/login';
-const TWITTER_USERNAME = 'rtester535@gmail.com'; // Replace with actual credentials
-const TWITTER_PASSWORD = 'Unicorn25$'; // Replace with actual credentials
+const TWITTER_USERNAME = process.env.TWIT_USERNAME || process.env.TWITTER_USERNAME || '';
+const TWITTER_PASSWORD = process.env.TWIT_PASSWORD || process.env.TWITTER_PASSWORD || '';
 
 // Enhanced detection bypass techniques
 const BYPASS_TECHNIQUES = {
@@ -785,6 +785,15 @@ class TwitterDebugPro {
 
     async runComprehensiveTest() {
         try {
+            // Check if credentials are available
+            if (!TWITTER_USERNAME || !TWITTER_PASSWORD) {
+                console.log('❌ Twitter credentials not configured');
+                console.log('💡 Set environment variables:');
+                console.log('   - TWIT_USERNAME or TWITTER_USERNAME');
+                console.log('   - TWIT_PASSWORD or TWITTER_PASSWORD');
+                return;
+            }
+            
             await this.initialize();
             console.log('🚀 Starting Twitter PRO debugging session...');
             console.log('📝 Focusing on debug route only ⚠️');
