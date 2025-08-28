@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
 const path = require('path');
+require('dotenv').config({ path: '../.env' });
 
 const app = express();
 const PORT = 3002;
