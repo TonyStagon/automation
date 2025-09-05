@@ -40,8 +40,8 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
         // Increase timeout for the exec command
         const execOptions = {
             env,
-            timeout: 120000, // 2 minutes timeout
-            maxBuffer: 1024 * 1024 * 10 // 10MB buffer for large outputs
+            timeout: 0, // no timeout
+            maxBuffer: 1024 * 1024 * 10
         };
 
         exec(`node ${scriptPath} "${escapedCaption}"`, execOptions, (error, stdout, stderr) => {

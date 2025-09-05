@@ -1,0 +1,11 @@
+Facebook automation error at 2025-09-05T07:35:36.302Z
+Error: spawn EPERM
+Stack: Error: spawn EPERM
+    at ChildProcess.spawn (node:internal/child_process:421:11)
+    at Object.spawn (node:child_process:753:9)
+    at new Process (file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/node_modules/@puppeteer/browsers/lib/esm/launch.js:151:45)
+    at launch (file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/node_modules/@puppeteer/browsers/lib/esm/launch.js:56:12)
+    at ChromeLauncher.launch (file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/node_modules/puppeteer-core/lib/esm/puppeteer/node/BrowserLauncher.js:66:32)
+    at async FacebookAutomation.initialize (file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/facebook-demo-test.js:30:24)
+    at async FacebookAutomation.run (file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/facebook-demo-test.js:699:13)
+    at async file:///C:/Users/MBSSUPPORT/Videos/Reslotato/automation/facebook-demo-test.js:776:5

@@ -1,0 +1,4 @@
+Facebook automation partially successful at 2025-09-05T07:43:13.660Z
+Login: SUCCESS
+Post: FAILED
+Check error screenshots for debugging
