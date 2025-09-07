@@ -146,7 +146,7 @@ export default function AutomationSettingsComponent({ settings, onSettingsChange
               Node.js + Puppeteer/Playwright
             </div>
           </div>
-          
+
           <div className="bg-white rounded-lg p-4 border">
             <h4 className="font-medium text-gray-900 mb-2">Queue Management</h4>
             <p className="text-sm text-gray-600 mb-3">Robust job scheduling with retry logic and failure handling for reliable posting.</p>
@@ -163,6 +163,7 @@ export default function AutomationSettingsComponent({ settings, onSettingsChange
           </p>
         </div>
       </div>
+
 
       {/* Save Button */}
       <div className="flex justify-end">

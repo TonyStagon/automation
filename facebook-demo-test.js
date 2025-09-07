@@ -35,7 +35,7 @@ class EnhancedFacebookAutomation {
                 '--disable-setuid-sandbox',
                 '--disable-blink-features=AutomationControlled',
                 '--disable-features=VizDisplayCompositor',
-                '--window-size=1366,768', // Common resolution
+                '--window-size=1366,768',
                 '--disable-web-security',
                 '--disable-dev-shm-usage',
                 '--disable-accelerated-2d-canvas',
@@ -217,37 +217,74 @@ class EnhancedFacebookAutomation {
         return false;
     }
 
-    async waitForElement(selectors, timeout = 10000) {
+    async waitForElement(selectors, timeout = 10000, retries = 3) {
         const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
         
-        for (const selector of selectorArray) {
-            try {
-                await this.page.waitForSelector(selector, { timeout: timeout / selectorArray.length });
-                const element = await this.page.$(selector);
-                
-                // Check if element is actually visible and interactable
-                const isInteractable = await this.page.evaluate((el) => {
-                    if (!el) return false;
+        let attempt = 1;
+        let lastError = null;
+        
+        while (attempt <= retries) {
+            console.log(`🗂️ Wait attempt ${attempt}/${retries} for selectors: ${selectorArray.join(', ')}`);
+            
+            for (const selector of selectorArray) {
+                try {
+                    await this.page.waitForSelector(selector, {
+                        timeout: Math.max(timeout / selectorArray.length, 2000),
+                        waitFor: 'visible' // Ensure element is visible
+                    });
                     
-                    const rect = el.getBoundingClientRect();
-                    const style = window.getComputedStyle(el);
+                    const element = await this.page.$(selector);
                     
-                    return rect.width > 0 && 
-                           rect.height > 0 && 
-                           style.visibility !== 'hidden' && 
-                           style.display !== 'none' && 
-                           style.opacity !== '0';
-                }, element);
-                
-                if (isInteractable) {
-                    return element;
+                    if (!element) {
+                        console.log(`❓ Found selector ${selector} but element is null`);
+                        continue;
+                    }
+                    
+                    // Enhanced interactability check with comprehensive validation
+                    const isInteractable = await this.page.evaluate((el) => {
+                        if (!el) return false;
+                        
+                        const rect = el.getBoundingClientRect();
+                        if (rect.width <= 0 || rect.height <= 0) return false;
+                        
+                        const style = window.getComputedStyle(el);
+                        if (style.display === 'none' ||
+                            style.visibility === 'hidden' ||
+                            parseInt(style.opacity) === 0 ||
+                            el.offsetParent === null) {
+                            return false;
+                        }
+                        
+                        // Additional checks: enabled and not busy
+                        const isDisabled = el.getAttribute('disabled') === '' ||
+                                         el.getAttribute('aria-disabled') === 'true';
+                        const isBusy = el.getAttribute('aria-busy') === 'true';
+                        
+                        return !isDisabled && !isBusy;
+                    }, element);
+                    
+                    if (isInteractable) {
+                        console.log(`✅ Found valid, interactable element: ${selector}`);
+                        return element;
+                    } else {
+                        console.log(`ℹ️  Found selector ${selector} but element is not interactable`);
+                    }
+                    
+                } catch (e) {
+                    lastError = e;
+                    console.log(`❌ Timing out or skipping for : ` + selector + ` Readably: I did receive error that is this in a shorter string version. `);
+                    // Don't log full error to avoid clutter
                 }
-            } catch (e) {
-                continue;
             }
+            
+            if (attempt < retries) {
+                console.log(`⏳ Retrying in 1 second... (attempt ${attempt}/${retries})`);
+                await this.humanDelay(1000, 1500);
+            }
+            attempt++;
         }
         
-        throw new Error(`None of the selectors found: ${selectorArray.join(', ')}`);
+        throw new Error(`❌ All selectors failed after ${retries} retries: ${selectorArray.join(', ')}. Last error: ${lastError?.message || 'No detailed error'}`);
     }
 
     async login() {
@@ -279,7 +316,7 @@ class EnhancedFacebookAutomation {
                 await this.logStep('Already logged in', true);
                 return true;
             } catch (e) {
-                console.log('🔑 Need to login...');
+                console.log('🔒 Need to login...');
             }
 
             // Go to login page
@@ -353,105 +390,853 @@ class EnhancedFacebookAutomation {
     }
 
     async findPostButton() {
-        console.log('🔍 Comprehensive POST button search...');
+        console.log('🎯 Advanced POST button detection starting...');
         
-        // Take a screenshot to see what buttons are available
-        await this.page.screenshot({ 
-            path: path.join(SCREENSHOT_DIR, 'button_search_debug.png'),
-            fullPage: false 
+        // Take screenshot for debugging
+        await this.page.screenshot({
+            path: `${SCREENSHOT_DIR}/before_post_button_search_${Date.now()}.png`
         });
 
-        // Method 1: Find all buttons and analyze them
-        const allButtons = await this.page.evaluate(() => {
-            const buttons = [];
+        // Enhanced post button detection with multiple strategies - Updated 2025
+        const postButtonStrategies = [
+            {
+                name: 'Modern Facebook UI Selectors - Jan 2025',
+                selectors: [
+                    // Primary post button selectors (highest priority)
+                    '[aria-label="Post"][role="button"]:not([aria-disabled="true"]):not([disabled])',
+                    'div[data-testid="react-composer-post-button"]',
+                    'button[data-testid="react-composer-post-button"]',
+                    'div[aria-label="Publish"][role="button"]:not([disabled])',
+                    'div[aria-label="Share"][role="button"]:not([disabled])',
+                    
+                    // Specific attribute patterns (reliable in current FB UI)
+                    'div[role="button"][data-pagelet*="Composer"]:not([aria-hidden="true"])',
+                    'div[data-testid*="post-button"]:not([disabled])',
+                    'button[data-testid*="post-button"]:not([disabled])',
+                    'div[aria-label*="post" i][role="button"]:not([disabled])', // Case insensitive
+                    'div[data-visualcompletion*="button"]:not([disabled])', // Facebook's visual completion markers
+                    
+                    // International variants
+                    'div[aria-label="Publicar"][role="button"]', // Spanish
+                    'div[aria-label="Confirmer"][role="button"]', // French
+                    'div[aria-label="Teilen"][role="button"]', // German
+                    'div[aria-label="Publica"][role="button"]', // Italian
+                    
+                    // Button-specific variants
+                    'button[type="submit"][aria-label*="Post"]:not([disabled])',
+                    'button[data-testid*="submit"]:not([disabled])' // Generic submit button
+                ]
+            },
+            {
+                name: 'Pattern-based Detection with Filters - Jan 2025',
+                selectors: [
+                    // Smart filtered button detection
+                    'div.x1pi30zi[role="button"]:not([disabled])', // Current Facebook primary button class
+                    'div.x1i0eh1i6[role="button"]:not([disabled])', // Alternative button pattern
+                    'div.x6s0dn4[role="button"]:not([disabled])', // Modern FB button
+                    'div.x1swvt13[role="button"]:not([disabled])', // Updated pattern
+                    
+                    // Filtered dynamic classes (with visibility checks)
+                    'div[class*="x1n2onr6"][role="button"]:not([aria-hidden="true"])',
+                    'div[class*="x1i10hfl"][role="button"]:visible', // Pseudo-selector for jQuery-like behavior
+                    'div[class*="xsgj6o6"][role="button"]:not([style*="display: none"])',
+                    'div[class*="x1lq5wgf"][role="button"]:not([hidden])',
+                    'div[class*="x78zum5"][role="button"]:empty', // Sometimes empty divs have button role
+                    
+                    // Enhanced detection with content
+                    'div[role="button"]:has(> span:has-text("Post")):not([disabled])',
+                    'div[role="button"]:has(> div:has-text("Post")):not([disabled])',
+                    'button:has(> span:has-text("Post")):not([disabled])',
+                    'button:has(> div:has-text("Post")):not([disabled])'
+                ]
+            }
+        ];
+
+        // Strategy 1: Try standard selectors
+        for (const strategy of postButtonStrategies) {
+            if (strategy.selectors.length === 0) continue; // Skip text-based for now
             
+            console.log(`🔍 Trying ${strategy.name}...`);
+            
+            for (const selector of strategy.selectors) {
+                try {
+                    const elements = await this.page.$$(selector);
+                    
+                    for (const element of elements) {
+                        const isValidPostButton = await this.page.evaluate(el => {
+                            const rect = el.getBoundingClientRect();
+                            const style = window.getComputedStyle(el);
+                            const text = el.textContent?.toLowerCase() || '';
+                            const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+                            
+                            // Check visibility
+                            const isVisible = rect.width > 0 && rect.height > 0 && 
+                                            style.display !== 'none' && 
+                                            style.visibility !== 'hidden' &&
+                                            style.opacity > 0;
+                            
+                            // Check if it looks like a post button
+                            const hasPostKeywords = /post|publish|share|submit/.test(text + ' ' + ariaLabel);
+                            
+                            // Check if it's positioned like a post button (usually at bottom right of composer)
+                            const isInPostPosition = rect.bottom < window.innerHeight && rect.right < window.innerWidth;
+                            
+                            // Check if it has button-like styling
+                            const hasButtonStyling = style.cursor === 'pointer' || 
+                                                   style.backgroundColor !== 'transparent' ||
+                                                   el.tagName === 'BUTTON';
+                            
+                            return isVisible && hasPostKeywords && isInPostPosition && hasButtonStyling;
+                        }, element);
+                        
+                        if (isValidPostButton) {
+                            console.log(`✅ Found valid post button with selector: ${selector}`);
+                            return element;
+                        }
+                    }
+                } catch (e) {
+                    console.log(`❌ Selector ${selector} failed:`, e.message.slice(0, 50));
+                    // Enhanced debug info for button detection
+                    if (e.message.includes('query') || e.message.includes('invalid') || e.message.includes('offset')) {
+                        console.log(`Selector likely evaluates to null for: ${selector}`);
+                    }
+                }
+            }
+        }
+
+        // Strategy 2: Text-based detection with improved logic
+        console.log('🔍 Trying text-based detection...');
+        const textBasedButton = await this.page.evaluateHandle(() => {
             // Find all clickable elements
-            const clickableElements = document.querySelectorAll('div[role="button"], button, input[type="submit"]');
+            const clickableElements = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
             
-            clickableElements.forEach((el, index) => {
+            // Filter for post buttons
+            const postButtons = clickableElements.filter(el => {
                 const rect = el.getBoundingClientRect();
                 const style = window.getComputedStyle(el);
-                const isVisible = rect.width > 0 && rect.height > 0 && 
-                                 style.display !== 'none' && style.visibility !== 'hidden';
+                const text = el.textContent?.toLowerCase().trim() || '';
+                const ariaLabel = el.getAttribute('aria-label')?.toLowerCase() || '';
+                const dataTestId = el.getAttribute('data-testid')?.toLowerCase() || '';
                 
-                if (isVisible) {
-                    buttons.push({
-                        index,
-                        text: el.textContent?.trim() || '',
-                        ariaLabel: el.getAttribute('aria-label') || '',
-                        className: el.className || '',
-                        tagName: el.tagName,
-                        disabled: el.hasAttribute('aria-disabled') ? el.getAttribute('aria-disabled') === 'true' : false,
-                        rect: {
-                            x: Math.round(rect.x),
-                            y: Math.round(rect.y),
-                            width: Math.round(rect.width),
-                            height: Math.round(rect.height)
+                // Enhanced visibility checks - must be fully visible and accessible
+                if (!this.isElementInteractable(el)) {
+                    return false;
+                }
+                
+                // Enhanced keyword detection for multiple languages
+                const fullContext = [text, ariaLabel, dataTestId].join(' ').toLowerCase();
+                const hasKeywords = this.detectPostKeywords(fullContext);
+                
+                if (!hasKeywords) return false;
+                
+                // Enhanced button detection with more human-like pattern matching
+                const looksLikeActiveButton = this.resemblesActiveButton(el, style, rect);
+                
+                return looksLikeActiveButton;
+            });
+            
+            // Sort by preference (exact matches first, then by position)
+            postButtons.sort((a, b) => {
+                const aText = a.textContent?.toLowerCase().trim() || '';
+                const bText = b.textContent?.toLowerCase().trim() || '';
+                
+                const aExact = /^(post|publish|share)$/i.test(aText);
+                const bExact = /^(post|publish|share)$/i.test(bText);
+                
+                if (aExact && !bExact) return -1;
+                if (!aExact && bExact) return 1;
+                
+                // If both or neither are exact, prefer one that's more to the bottom-right
+                const aRect = a.getBoundingClientRect();
+                const bRect = b.getBoundingClientRect();
+                
+                return (bRect.bottom + bRect.right) - (aRect.bottom + aRect.right);
+            });
+            
+            return postButtons[0] || null;
+        });
+
+        if (textBasedButton && textBasedButton.asElement) {
+            const element = textBasedButton.asElement();
+            if (element) {
+                console.log('✅ Found post button via text-based detection');
+                return element;
+            }
+        }
+
+        // Strategy 3: DOM tree analysis for composer area
+        console.log('🔍 Trying DOM tree analysis...');
+        const composerButton = await this.page.evaluateHandle(() => {
+            // Look for contenteditable elements (the text input)
+            const textInputs = Array.from(document.querySelectorAll('[contenteditable="true"]'));
+            
+            for (const input of textInputs) {
+                // Find the closest form or container
+                let container = input.closest('form') || 
+                              input.closest('div[role="dialog"]') ||
+                              input.closest('div[data-testid*="composer"]') ||
+                              input.parentElement;
+                
+                // Look for buttons in this container
+                if (container) {
+                    const buttons = Array.from(container.querySelectorAll('button, div[role="button"], input[type="submit"]'));
+                    
+                    for (const button of buttons) {
+                        const rect = button.getBoundingClientRect();
+                        const text = button.textContent?.toLowerCase() || '';
+                        const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
+                        
+                        if (rect.width > 0 && rect.height > 0 &&
+                            /post|publish|share/.test(text + ' ' + ariaLabel)) {
+                            return button;
+                        }
+                    }
+                }
+            }
+            return null;
+        });
+
+        if (composerButton && composerButton.asElement) {
+            const element = composerButton.asElement();
+            if (element) {
+                console.log('✅ Found post button via DOM tree analysis');
+                return element;
+            }
+        }
+
+        // Strategy 4: XPath fallback
+        console.log('🔍 Trying XPath selectors...');
+        const xpathSelectors = [
+            "//div[@role='button' and contains(translate(text(), 'POST', 'post'), 'post')]",
+            "//button[contains(translate(text(), 'POST', 'post'), 'post')]",
+            "//div[@role='button' and @aria-label[contains(translate(., 'POST', 'post'), 'post')]]",
+            "//button[@aria-label[contains(translate(., 'POST', 'post'), 'post')]]"
+        ];
+
+        for (const xpath of xpathSelectors) {
+            try {
+                const elements = await this.page.$x(xpath);
+                if (elements.length > 0) {
+                    const element = elements[0];
+                    const isVisible = await this.page.evaluate(el => {
+                        const rect = el.getBoundingClientRect();
+                        const style = window.getComputedStyle(el);
+                        return rect.width > 0 && rect.height > 0 && 
+                               style.display !== 'none' && 
+                               style.visibility !== 'hidden';
+                    }, element);
+                    
+                    if (isVisible) {
+                        console.log(`✅ Found post button via XPath: ${xpath}`);
+                        return element;
+                    }
+                }
+            } catch (e) {
+                console.log(`❌ XPath ${xpath} failed`);
+            }
+        }
+
+        // Strategy 5: Enhanced DOM Context Analysis
+        console.log('🔍 Trying enhanced DOM context analysis...');
+        const domContextButton = await this.page.evaluateHandle(() => {
+            // Find the post content editor
+            const postEditor = document.querySelector('[contenteditable="true"]');
+            if (!postEditor) return null;
+
+            // Traverse up DOM tree to find composer container
+            let container = postEditor.closest('form') ||
+                           postEditor.closest('[data-testid*="composer"]') ||
+                           postEditor.parentElement;
+
+            while (container && container !== document.body) {
+                const hasButtons = container.querySelectorAll('button, div[role="button"]').length > 0;
+                if (hasButtons && getComputedStyle(container).display !== 'none') break;
+                container = container.parentElement;
+            }
+
+            if (!container) return null;
+
+            // Find buttons and analyze them
+            const buttons = Array.from(container.querySelectorAll('button, div[role="button"]'));
+            
+            const scoredButtons = buttons.map(button => {
+                const rect = button.getBoundingClientRect();
+                const style = getComputedStyle(button);
+                const text = button.textContent?.toLowerCase() || '';
+                const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
+                
+                let score = 0;
+
+                if (rect.width < 10 || rect.height < 10 || style.display === 'none') {
+                    return { button, score: 0 };
+                }
+
+                // Higher scores for better matches
+                if (/^post$/i.test(text.trim())) score += 100;
+                else if (/^(publish|share)$/i.test(text.trim())) score += 80;
+                else if (/post/i.test(text) || /post/i.test(ariaLabel)) score += 60;
+                else if (/publish|share/i.test(text) || /publish|share/i.test(ariaLabel)) score += 50;
+
+                // Style analysis - prefer styled, typical buttons
+                if (button.tagName === 'BUTTON') score += 20;
+                if (style.cursor === 'pointer') score += 15;
+                if (style.backgroundColor && style.backgroundColor !== 'transparent') score += 10;
+
+                // Size constraints for typical buttons
+                if (rect.width >= 40 && rect.width <= 150 && rect.height >= 30 && rect.height <= 50) {
+                    score += 20;
+                }
+
+                // Position relative to editor
+                const editorRect = postEditor.getBoundingClientRect();
+                const distanceFromEditor = Math.abs(rect.top - editorRect.bottom) + Math.abs(rect.left - editorRect.left);
+                
+                // Closer buttons get higher score (200px max)
+                const positionScore = Math.max(0, 25 - Math.floor(distanceFromEditor / 8));
+                score += positionScore;
+
+                return { button, score };
+            });
+
+            scoredButtons.sort((a, b) => b.score - a.score);
+            return scoredButtons.length > 0 && scoredButtons[0].score > 60 ? scoredButtons[0].button : null;
+        });
+
+        if (domContextButton && domContextButton.asElement) {
+            const element = domContextButton.asElement();
+            if (element) {
+                console.log('✅ Found post button via DOM context analysis');
+                return element;
+            }
+        }
+
+        // Strategy 6: Last resort - find the most likely button
+        console.log('🔍 Going into last resort mode: finding most likely button...');
+        const lastResortButton = await this.page.evaluateHandle(() => {
+            const allButtons = Array.from(document.querySelectorAll('button, div[role="button"], input[type="submit"]'));
+            
+            // Score each button based on likelihood of being a post button
+            const scoredButtons = allButtons.map(button => {
+                const rect = button.getBoundingClientRect();
+                const style = window.getComputedStyle(button);
+                const text = button.textContent?.toLowerCase() || '';
+                const ariaLabel = button.getAttribute('aria-label')?.toLowerCase() || '';
+                
+                let score = 0;
+                
+                // Must be visible
+                if (rect.width < 10 || rect.height < 10 || 
+                    style.display === 'none' || 
+                    style.visibility === 'hidden' ||
+                    parseFloat(style.opacity) < 0.1) {
+                    return { button, score: 0 };
+                }
+                
+                // Text content scoring
+                if (/^post$/i.test(text.trim())) score += 100;
+                else if (/^(publish|share)$/i.test(text.trim())) score += 80;
+                else if (/post/i.test(text)) score += 50;
+                else if (/publish|share/i.test(text)) score += 40;
+                
+                // Aria label scoring
+                if (/post/i.test(ariaLabel)) score += 60;
+                else if (/publish|share/i.test(ariaLabel)) score += 50;
+                
+                // Position scoring (prefer bottom-right)
+                const windowHeight = window.innerHeight;
+                const windowWidth = window.innerWidth;
+                if (rect.bottom > windowHeight * 0.5) score += 20;
+                if (rect.right > windowWidth * 0.5) score += 20;
+                
+                // Style scoring
+                if (button.tagName === 'BUTTON') score += 30;
+                if (style.cursor === 'pointer') score += 20;
+                if (style.backgroundColor && style.backgroundColor !== 'transparent') score += 15;
+                
+                // Size scoring (reasonable button size)
+                if (rect.width >= 50 && rect.width <= 200 && rect.height >= 30 && rect.height <= 60) {
+                    score += 25;
+                }
+                
+                return { button, score };
+            });
+            
+            // Sort by score and return the highest scoring button
+            scoredButtons.sort((a, b) => b.score - a.score);
+            
+            return scoredButtons.length > 0 && scoredButtons[0].score > 50 ? scoredButtons[0].button : null;
+        });
+
+        if (lastResortButton && lastResortButton.asElement) {
+            const element = lastResortButton.asElement();
+            if (element) {
+                console.log('✅ Found post button via scoring algorithm');
+                return element;
+            }
+        }
+
+        console.log('❌ No post button found through any enhanced method');
+        
+        // Comprehensive debugging and error reporting
+        console.log('🐛 DEBUG: Capturing DOM state for post button debugging...');
+        await this.page.screenshot({
+            path: path.join(SCREENSHOT_DIR, `post_button_fallback_analysis_${Date.now()}.png`),
+            fullPage: true
+        });
+
+        // Enhanced error information gathering
+        await this.page.evaluate(() => {
+            console.log('📊 POST BUTTON ANALYSIS REPORT -------------------------------------');
+            
+            // Find post composer elements
+            const composerDivs = Array.from(document.querySelectorAll('div')).filter(div => {
+                const rect = div.getBoundingClientRect();
+                return rect.width > 200 && rect.height > 100 && getComputedStyle(div).display !== 'none';
+            });
+
+            composerDivs.sort((a, b) => {
+                return (b.getBoundingClientRect().width * b.getBoundingClientRect().height) -
+                       (a.getBoundingClientRect().width * a.getBoundingClientRect().height);
+            });
+
+            if (composerDivs.length > 0) {
+                const topComposer = composerDivs[0];
+                
+                // Log information about the composer
+                console.log('Top composer container found:');
+                console.log('  Classes:', Array.from(topComposer.classList).join(' '));
+                console.log('  Size:', `${Math.round(topComposer.getBoundingClientRect().width)}x${Math.round(topComposer.getBoundingClientRect().height)}`);
+                console.log('  Data attributes:', Object.keys(topComposer.dataset).filter(k => topComposer.dataset[k] !== ''));
+                
+                // Log buttons in the composer
+                const buttons = topComposer.querySelectorAll('button, div[role="button"], div[data-testid]');
+                console.log('  Found', buttons.length, 'candidate buttons:');
+                
+                Array.from(buttons).forEach((button, i) => {
+                    if (i < 5) { // Only show first 5 to avoid log spam
+                        const rect = button.getBoundingClientRect();
+                        console.log(`    ${i + 1}. ${button.tagName}: "${button.textContent?.substring(0, 20)}" | size: ${Math.round(rect.width)}x${Math.round(rect.height)}`);
+                    }
+                });
+            }
+
+            console.log('📑 COMMON CANDIDATE ELEMENTS ---------------------------------------');
+            
+            // Check common locations for post buttons
+            const commonAreas = [
+                'div[data-testid*="feeds"]',
+                'div[data-testid*="addpost"]',
+                'div[data-pagelet*="FeedComposer"]',
+                'div[role="dialog"]',
+                'form'
+            ];
+
+            commonAreas.forEach(area => {
+                const elements = document.querySelectorAll(area);
+                if (elements.length > 0) {
+                    console.log(`📍 ${area}: found ${elements.length} element(s)`);
+                    elements.forEach((el, idx) => {
+                        if (idx < 2) { // Only show first two
+                            console.log(`  Element ${idx + 1}: Classes "${Array.from(el.classList).join(' ')}"`);
                         }
                     });
                 }
             });
-            
-            return buttons;
+
+            console.log('-------------------------------------------------------------------');
         });
-
-        console.log('📋 Found buttons:');
-        allButtons.forEach((btn, i) => {
-            console.log(`  ${i + 1}. "${btn.text}" | aria-label: "${btn.ariaLabel}" | disabled: ${btn.disabled}`);
-        });
-
-        // Method 2: Smart POST button detection
-        const postButtonCandidates = allButtons.filter(btn => {
-            const text = btn.text.toLowerCase();
-            const ariaLabel = btn.ariaLabel.toLowerCase();
-            
-            // Look for buttons that likely are POST buttons
-            return (text === 'post' || 
-                   text.includes('post') && !text.includes('actions') && !text.includes('boost') ||
-                   ariaLabel === 'post' ||
-                   ariaLabel.includes('post') && !ariaLabel.includes('actions')) &&
-                   !btn.disabled;
-        });
-
-        console.log(`🎯 POST button candidates: ${postButtonCandidates.length}`);
-        postButtonCandidates.forEach((btn, i) => {
-            console.log(`  Candidate ${i + 1}: "${btn.text}" | "${btn.ariaLabel}"`);
-        });
-
-        // Method 3: Try each candidate
-        for (const candidate of postButtonCandidates) {
-            try {
-                // Get the element again by its characteristics
-                const element = await this.page.evaluate((btnInfo) => {
-                    const elements = document.querySelectorAll('div[role="button"], button, input[type="submit"]');
-                    
-                    for (const el of elements) {
-                        const rect = el.getBoundingClientRect();
-                        const text = el.textContent?.trim() || '';
-                        const ariaLabel = el.getAttribute('aria-label') || '';
-                        
-                        if (Math.abs(rect.x - btnInfo.rect.x) < 5 &&
-                            Math.abs(rect.y - btnInfo.rect.y) < 5 &&
-                            text === btnInfo.text &&
-                            ariaLabel === btnInfo.ariaLabel) {
-                            return el;
-                        }
-                    }
-                    return null;
-                }, candidate);
-
-                if (element) {
-                    console.log(`✅ Found matching POST button: "${candidate.text}"`);
-                    return element;
-                }
-            } catch (e) {
-                console.log(`❌ Could not get element for candidate: "${candidate.text}"`);
-                continue;
-            }
-        }
 
         return null;
     }
+
+   
+// Enhanced posy clicking with additional visual and interaction detection
+async clickPosy(predictedButton) {
+    console.log('🎯 Enhanced Posy Click starting...');
+    
+    await this.page.screenshot({
+        path: `${SCREENSHOT_DIR}/before_posy_click_${Date.now()}.png`
+    });
+
+    // Multiple click techniques in a row for maximum success rate
+    const clickMethods = [
+        {
+            name: 'Enhanced visible area click',
+            action: async () => {
+                const rect = await predictedButton.boundingBox();
+                const clickX = rect.x + rect.width * 0.5;
+                const clickY = rect.y + rect.height * 0.7; // Click slightly lower in visible area
+                await this.page.mouse.click(clickX, clickY);
+                await this.humanDelay(300, 600);
+            }
+        },
+        {
+            name: 'Lower edge click for overflow buttons',
+            action: async () => {
+                const rect = await predictedButton.boundingBox();
+                const clickX = rect.x + rect.width * 0.5;
+                const clickY = rect.y + rect.height * 0.9; // Avoid hitting top edge issues
+                await this.page.mouse.click(clickX, clickY);
+                await this.humanDelay(300, 600);
+            }
+        },
+        {
+            name: 'Double-click for stubborn buttons',
+            action: async () => {
+                const rect = await predictedButton.boundingBox();
+                const clickX = rect.x + rect.width * 0.5;
+                const clickY = rect.y + rect.height * 0.5;
+                await this.page.mouse.click(clickX, clickY, { clickCount: 2 });
+                await this.humanDelay(500, 800);
+            }
+        },
+        {
+            name: 'Right-edge click (trigger zone)',
+            action: async () => {
+                const rect = await predictedButton.boundingBox();
+                const clickX = rect.x + rect.width * 0.8; // Right side often works better
+                const clickY = rect.y + rect.height * 0.5;
+                await this.page.mouse.click(clickX, clickY);
+                await this.humanDelay(300, 600);
+            }
+        }
+    ];
+
+    for (const method of clickMethods) {
+        console.log(`🔧 Trying posy method: ${method.name}`);
+        try {
+            await method.action();
+            
+            // Quick verification check
+            await this.humanDelay(1000, 1500);
+            const success = await this.checkPostSuccess();
+            
+            if (success) {
+                console.log(`✅ Posy method "${method.name}" successful!`);
+                return true;
+            }
+        } catch (e) {
+            console.log(`⚠️ Posy method "${method.name}" failed:`, e.message);
+        }
+    }
+
+    console.log('❌ All posy click methods failed');
+    return false;
+}
+
+// Enhanced version of post button click with posy capabilities
+async enhancedPostButtonClick(postButton) {
+    console.log('🎯 Starting robust post button clicking...');
+    
+    // Take screenshot before click attempts
+    await this.page.screenshot({
+        path: `${SCREENSHOT_DIR}/before_robust_click_${Date.now()}.png`
+    });
+
+    // First, let's ensure we have the right button by double-checking its properties
+    const buttonInfo = await this.page.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        return {
+            text: el.textContent?.trim(),
+            ariaLabel: el.getAttribute('aria-label'),
+            tagName: el.tagName,
+            classes: Array.from(el.classList),
+            rect: { width: rect.width, height: rect.height, x: rect.x, y: rect.y },
+            isVisible: rect.width > 0 && rect.height > 0,
+            isEnabled: !el.hasAttribute('disabled') && el.getAttribute('aria-disabled') !== 'true'
+        };
+    }, postButton);
+    
+    console.log('🔍 Button details:', buttonInfo);
+    
+    if (!buttonInfo.isVisible || !buttonInfo.isEnabled) {
+        console.log('❌ Button is not visible or enabled');
+        return false;
+    }
+
+    // Method 1: Force scroll and wait approach
+    console.log('🔄 Method 1: Scroll into view and standard click');
+    try {
+        await postButton.scrollIntoViewIfNeeded();
+        await this.humanDelay(1000, 1500);
+        
+        // Clear any potential overlays by clicking elsewhere first
+        await this.page.mouse.click(100, 100);
+        await this.humanDelay(500, 800);
+        
+        await postButton.hover();
+        await this.humanDelay(300, 500);
+        await postButton.click();
+        
+        // Wait longer for Facebook to process
+        await this.humanDelay(3000, 4000);
+        
+        const success1 = await this.checkPostSuccess();
+        if (success1) {
+            console.log('✅ Method 1 successful');
+            return true;
+        }
+    } catch (error) {
+        console.log('❌ Method 1 failed:', error.message);
+    }
+
+    // Method 2: JavaScript click with event simulation
+    console.log('🔄 Method 2: JavaScript click with full event chain');
+    try {
+        await this.page.evaluate(el => {
+            // Simulate a complete mouse interaction
+            const rect = el.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            const y = rect.top + rect.height / 2;
+            
+            // Create and dispatch events in correct order
+            const events = [
+                new MouseEvent('mousedown', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    clientX: x, 
+                    clientY: y,
+                    button: 0
+                }),
+                new MouseEvent('mouseup', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    clientX: x, 
+                    clientY: y,
+                    button: 0
+                }),
+                new MouseEvent('click', { 
+                    bubbles: true, 
+                    cancelable: true, 
+                    clientX: x, 
+                    clientY: y,
+                    button: 0
+                })
+            ];
+            
+            events.forEach(event => {
+                el.dispatchEvent(event);
+            });
+            
+            // Also try direct click
+            if (typeof el.click === 'function') {
+                el.click();
+            }
+        }, postButton);
+        
+        await this.humanDelay(4000, 5000);
+        
+        const success2 = await this.checkPostSuccess();
+        if (success2) {
+            console.log('✅ Method 2 successful');
+            return true;
+        }
+    } catch (error) {
+        console.log('❌ Method 2 failed:', error.message);
+    }
+
+    // Method 3: Focus and keyboard activation
+    console.log('🔄 Method 3: Focus and keyboard activation');
+    try {
+        await postButton.focus();
+        await this.humanDelay(500, 800);
+        
+        // Try both Enter and Space
+        await this.page.keyboard.press('Enter');
+        await this.humanDelay(1000, 1500);
+        
+        let success3 = await this.checkPostSuccess();
+        if (!success3) {
+            await postButton.focus();
+            await this.page.keyboard.press('Space');
+            await this.humanDelay(2000, 3000);
+            success3 = await this.checkPostSuccess();
+        }
+        
+        if (success3) {
+            console.log('✅ Method 3 successful');
+            return true;
+        }
+    } catch (error) {
+        console.log('❌ Method 3 failed:', error.message);
+    }
+
+    // Method 4: Form submission approach
+    console.log('🔄 Method 4: Form submission approach');
+    try {
+        const formSubmitted = await this.page.evaluate(el => {
+            // Find the closest form
+            let form = el.closest('form');
+            let container = el;
+            
+            // If no form found, look for form in nearby containers
+            while (!form && container && container !== document.body) {
+                container = container.parentElement;
+                form = container.querySelector('form') || container.closest('form');
+            }
+            
+            if (form) {
+                // Try to submit the form
+                if (typeof form.submit === 'function') {
+                    form.submit();
+                    return true;
+                }
+                
+                // Try to trigger submit event
+                const submitEvent = new Event('submit', {
+                    bubbles: true,
+                    cancelable: true
+                });
+                form.dispatchEvent(submitEvent);
+                return true;
+            }
+            
+            return false;
+        }, postButton);
+        
+        if (formSubmitted) {
+            await this.humanDelay(4000, 5000);
+            const success4 = await this.checkPostSuccess();
+            if (success4) {
+                console.log('✅ Method 4 successful');
+                return true;
+            }
+        }
+    } catch (error) {
+        console.log('❌ Method 4 failed:', error.message);
+    }
+
+    // Method 5: Alternative button finder and click
+    console.log('🔄 Method 5: Alternative button detection and click');
+    try {
+        const alternativeButton = await this.page.evaluate(() => {
+            // Look for any clickable element with post-related text near our current button
+            const allClickable = document.querySelectorAll('button, div[role="button"], input[type="submit"]');
+            
+            for (const element of allClickable) {
+                const text = element.textContent?.toLowerCase() || '';
+                const ariaLabel = element.getAttribute('aria-label')?.toLowerCase() || '';
+                const rect = element.getBoundingClientRect();
+                
+                if (rect.width > 30 && rect.height > 20 && 
+                    (text.includes('post') || text.includes('share') || text.includes('publish') ||
+                     ariaLabel.includes('post') || ariaLabel.includes('share') || ariaLabel.includes('publish'))) {
+                    
+                    // Make sure it's not disabled
+                    const style = getComputedStyle(element);
+                    if (style.display !== 'none' && 
+                        style.visibility !== 'hidden' && 
+                        !element.hasAttribute('disabled') &&
+                        element.getAttribute('aria-disabled') !== 'true') {
+                        return element;
+                    }
+                }
+            }
+            return null;
+        });
+        
+        if (alternativeButton) {
+            console.log('🔍 Found alternative button, trying click...');
+            await alternativeButton.click();
+            await this.humanDelay(4000, 5000);
+            
+            const success5 = await this.checkPostSuccess();
+            if (success5) {
+                console.log('✅ Method 5 successful');
+                return true;
+            }
+        }
+    } catch (error) {
+        console.log('❌ Method 5 failed:', error.message);
+    }
+
+    // Method 6: Last resort - keyboard shortcuts
+    console.log('🔄 Method 6: Global keyboard shortcuts');
+    try {
+        // Find any contenteditable area and try keyboard shortcuts
+        const textArea = await this.page.$('[contenteditable="true"]');
+        if (textArea) {
+            await textArea.focus();
+            await this.humanDelay(500, 800);
+            
+            // Try Ctrl+Enter
+            await this.page.keyboard.down('Control');
+            await this.page.keyboard.press('Enter');
+            await this.page.keyboard.up('Control');
+            
+            await this.humanDelay(3000, 4000);
+            
+            let success6 = await this.checkPostSuccess();
+            
+            // If Ctrl+Enter didn't work, try Cmd+Enter (Mac)
+            if (!success6) {
+                await textArea.focus();
+                await this.page.keyboard.down('Meta');
+                await this.page.keyboard.press('Enter');
+                await this.page.keyboard.up('Meta');
+                
+                await this.humanDelay(3000, 4000);
+                success6 = await this.checkPostSuccess();
+            }
+            
+            if (success6) {
+                console.log('✅ Method 6 successful');
+                return true;
+            }
+        }
+    } catch (error) {
+        console.log('❌ Method 6 failed:', error.message);
+    }
+
+    console.log('❌ All methods failed');
+    return false;
+}
+
+async checkPostSuccess() {
+    return await this.page.evaluate(() => {
+        // More comprehensive success indicators
+        const indicators = {
+            // Check if composer is closed/gone
+            composerGone: document.querySelectorAll('[contenteditable="true"][data-lexical-editor="true"]').length === 0,
+            
+            // Check if we're redirected away from composer
+            urlChanged: !window.location.href.includes('composer') && !window.location.href.includes('create'),
+            
+            // Check for success notifications
+            hasSuccessMessage: !!document.querySelector('[data-testid*="success"], [role="alert"], .notificationMessage'),
+            
+            // Check if post button is disabled/gone
+            postButtonGone: !document.querySelector('div[aria-label="Post"][role="button"]:not([aria-disabled="true"])'),
+            
+            // Check for loading/posting indicators
+            hasLoadingIndicator: !!document.querySelector('[role="progressbar"], [data-testid="loading"]'),
+            
+            // Check if we can see a "Your post" or similar message
+            hasPostConfirmation: !!document.querySelector('[data-testid*="post"], .post, [aria-label*="posted"]'),
+            
+            // Check if page title changed (sometimes indicates successful post)
+            titleChanged: document.title.toLowerCase().includes('facebook') && !document.title.toLowerCase().includes('composer')
+        };
+        
+        console.log('Success indicators check:', indicators);
+        
+        // Consider successful if at least 2 strong indicators are true
+        const strongIndicators = [
+            indicators.composerGone,
+            indicators.urlChanged,
+            indicators.hasSuccessMessage,
+            indicators.postButtonGone
+        ];
+
+
+        const positiveIndicators = strongIndicators.filter(Boolean).length;
+        
+        return positiveIndicators >= 2 || 
+               indicators.hasSuccessMessage || 
+               (indicators.composerGone && indicators.urlChanged);
+    });
+}
+      
 
     async createPost() {
         try {
@@ -568,7 +1353,7 @@ class EnhancedFacebookAutomation {
             await this.logStep('Open post composer', true);
 
             // Type the post content
-            console.log('✍️ Typing post content...');
+            console.log('✏️ Typing post content...');
             const postMessage = 'Hello world! 🌍 This is an automated test post created with enhanced stealth techniques. #automation #test';
             
             await this.simulateMouseMovement();
@@ -579,6 +1364,7 @@ class EnhancedFacebookAutomation {
             await this.page.evaluate((el) => {
                 el.innerHTML = '';
                 el.textContent = '';
+                if (el.focus) el.focus();
             }, textInput);
             
             await this.typeHumanLike(textInput, postMessage);
@@ -586,93 +1372,183 @@ class EnhancedFacebookAutomation {
 
             await this.humanDelay(2000, 4000);
 
-            // Enhanced POST button detection
+            // Enhanced POST button detection and clicking
             console.log('🔍 Starting comprehensive POST button search...');
             
             const postButton = await this.findPostButton();
 
             if (!postButton) {
-                // Last resort: try pressing Enter
-                console.log('🎯 POST button not found, trying keyboard shortcut...');
-                await textInput.focus();
-                await this.humanDelay(500, 1000);
+                // Emergency keyboard shortcuts
+                console.log('🚨 No post button found, trying emergency keyboard shortcuts...');
                 
-                // Try Ctrl+Enter (common shortcut for posting)
-                await this.page.keyboard.down('Control');
-                await this.page.keyboard.press('Enter');
-                await this.page.keyboard.up('Control');
-                await this.logStep('Try Ctrl+Enter shortcut', true);
+                const emergencyShortcuts = [
+                    {
+                        name: 'Ctrl+Enter',
+                        action: async () => {
+                            await textInput.focus();
+                            await this.page.keyboard.down('Control');
+                            await this.page.keyboard.press('Enter');
+                            await this.page.keyboard.up('Control');
+                        }
+                    },
+                    {
+                        name: 'Command+Enter (Mac)',
+                        action: async () => {
+                            await textInput.focus();
+                            await this.page.keyboard.down('Meta');
+                            await this.page.keyboard.press('Enter');
+                            await this.page.keyboard.up('Meta');
+                        }
+                    },
+                    {
+                        name: 'Tab to button and Enter',
+                        action: async () => {
+                            await textInput.focus();
+                            // Tab through elements to find the post button
+                            for (let i = 0; i < 10; i++) {
+                                await this.page.keyboard.press('Tab');
+                                await this.humanDelay(300, 500);
+                                
+                                // Check if current focused element is a post button
+                                const isPostButton = await this.page.evaluate(() => {
+                                    const focused = document.activeElement;
+                                    if (!focused) return false;
+                                    
+                                    const text = focused.textContent?.toLowerCase() || '';
+                                    const ariaLabel = focused.getAttribute('aria-label')?.toLowerCase() || '';
+                                    
+                                    return /post|publish|share/.test(text + ' ' + ariaLabel);
+                                });
+                                
+                                if (isPostButton) {
+                                    await this.page.keyboard.press('Enter');
+                                    console.log('✅ Found post button via Tab navigation');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                ];
                 
-                await this.humanDelay(3000, 5000);
+                let shortcutWorked = false;
+                for (const shortcut of emergencyShortcuts) {
+                    try {
+                        console.log(`⚡ Trying emergency shortcut: ${shortcut.name}`);
+                        await shortcut.action();
+                        await this.humanDelay(3000, 5000);
+                        
+                        // Check if it worked
+                        const success = await this.page.evaluate(() => {
+                            return !document.querySelector('[contenteditable="true"][data-lexical-editor="true"]') ||
+                                   !window.location.href.includes('composer') ||
+                                   !!document.querySelector('[data-testid*="success"]');
+                        });
+                        
+                        if (success) {
+                            await this.logStep(`Emergency ${shortcut.name} successful`, true);
+                            shortcutWorked = true;
+                            break;
+                        }
+                    } catch (e) {
+                        console.log(`❌ Emergency ${shortcut.name} failed:`, e.message);
+                    }
+                }
                 
-                // Check if it worked
-                const currentUrl = this.page.url();
-                if (!currentUrl.includes('composer') && !currentUrl.includes('create')) {
-                    await this.logStep('Post published via keyboard shortcut', true);
-                    return true;
-                } else {
+                if (!shortcutWorked) {
                     await this.page.screenshot({ 
                         path: path.join(SCREENSHOT_DIR, 'all_methods_failed.png'),
                         fullPage: true 
                     });
-                    throw new Error('All POST methods failed - manual intervention required');
+                    throw new Error('COMPLETE FAILURE: No method could find or click the post button');
                 }
-            }
-
-            // Click POST button with multiple retry strategies
-            console.log('📤 Attempting to click POST button...');
-            
-            // Strategy 1: Regular click
-            try {
-                await this.simulateMouseMovement();
-                await postButton.click();
-                console.log('✅ Regular click attempted');
-            } catch (e) {
-                console.log('❌ Regular click failed, trying alternative methods...');
+            } else {
+                // Use POSY enhanced clicking method first
+                console.log('🎯 Post button found, attempting POSY enhanced clicking...');
                 
-                // Strategy 2: JavaScript click
-                try {
-                    await this.page.evaluate(el => el.click(), postButton);
-                    console.log('✅ JavaScript click attempted');
-                } catch (e2) {
-                    console.log('❌ JavaScript click failed');
+                let clickSuccess = await this.clickPosy(postButton);
+                
+                // If posy click failed, fall back to enhanced post button click
+                if (!clickSuccess) {
+                    console.log('🔄 POSY click failed, falling back to enhanced post button click...');
+                    clickSuccess = await this.enhancedPostButtonClick(postButton);
+                }
+                
+                if (!clickSuccess) {
+                    console.log('⚠️ Enhanced clicking failed, trying final emergency measures...');
                     
-                    // Strategy 3: Dispatch click event
+                    // Final emergency: try to submit via form submission
                     try {
-                        await this.page.evaluate(el => {
-                            const event = new MouseEvent('click', {
-                                view: window,
-                                bubbles: true,
-                                cancelable: true
-                            });
-                            el.dispatchEvent(event);
+                        await this.page.evaluate((button) => {
+                            // Find the closest form
+                            const form = button.closest('form');
+                            if (form && form.submit) {
+                                form.submit();
+                                return;
+                            }
+                            
+                            // Try to trigger form submission event
+                            const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+                            if (form) {
+                                form.dispatchEvent(submitEvent);
+                            }
                         }, postButton);
-                        console.log('✅ Event dispatch click attempted');
-                    } catch (e3) {
-                        console.log('❌ Event dispatch failed');
-                        throw new Error('All click methods failed');
+                        
+                        await this.logStep('Emergency form submission', true);
+                    } catch (e) {
+                        await this.logStep('All post methods failed', false, 'Could not click post button');
+                        throw new Error('FINAL FAILURE: All post button clicking methods failed');
                     }
                 }
             }
 
-            await this.logStep('Click post button', true);
-
-            // Wait and verify success
+            // Enhanced success verification
+            console.log('🔍 Verifying post success...');
             await this.humanDelay(5000, 8000);
             
             // Multiple success verification methods
-            const isSuccess = await this.page.evaluate(() => {
-                const url = window.location.href;
-                const hasComposer = url.includes('composer') || url.includes('create');
-                const hasSuccessIndicators = document.querySelector('[data-testid="post-success"]') ||
-                                           document.querySelector('[role="alert"]') ||
-                                           !document.querySelector('[contenteditable="true"][data-lexical-editor="true"]');
+            let verificationAttempts = 0;
+            let isSuccess = false;
+            
+            while (verificationAttempts < 3 && !isSuccess) {
+                isSuccess = await this.page.evaluate(() => {
+                    const indicators = {
+                        // Composer closed
+                        composerClosed: !document.querySelector('[contenteditable="true"][data-lexical-editor="true"]'),
+                        // URL changed away from composer
+                        urlChanged: !window.location.href.includes('composer') && !window.location.href.includes('create'),
+                        // Success message visible
+                        successMessage: !!document.querySelector('[data-testid*="success"], [role="alert"]'),
+                        // Post button disappeared
+                        buttonGone: !document.querySelector('div[aria-label="Post"][role="button"]:not([aria-disabled="true"])'),
+                        // Loading completed
+                        noLoading: !document.querySelector('[role="progressbar"]')
+                    };
+                    
+                    console.log('Success indicators:', indicators);
+                    
+                    // Consider it successful if at least 2 indicators are true
+                    const trueCount = Object.values(indicators).filter(val => val === true).length;
+                    return trueCount >= 2;
+                });
                 
-                return !hasComposer || hasSuccessIndicators;
-            });
+                if (!isSuccess) {
+                    console.log(`⏳ Verification attempt ${verificationAttempts + 1} failed, waiting longer...`);
+                    await this.humanDelay(3000, 5000);
+                    verificationAttempts++;
+                } else {
+                    break;
+                }
+            }
             
             if (isSuccess) {
                 await this.logStep('Post published successfully', true);
+                
+                // Take success screenshot
+                await this.page.screenshot({ 
+                    path: path.join(SCREENSHOT_DIR, 'post_success.png'),
+                    fullPage: true 
+                });
+                
                 return true;
             } else {
                 console.log('⚠️ Post status unclear, taking screenshot for manual verification...');
@@ -681,15 +1557,19 @@ class EnhancedFacebookAutomation {
                     fullPage: true 
                 });
                 
-                // Give it more time in case of slow network
-                await this.humanDelay(5000, 7000);
+                // Final check - sometimes Facebook is just slow
+                await this.humanDelay(10000, 12000);
                 
-                const finalUrl = this.page.url();
-                if (!finalUrl.includes('composer')) {
-                    await this.logStep('Post likely successful (URL check)', true);
+                const finalCheck = await this.page.evaluate(() => {
+                    return !document.querySelector('[contenteditable="true"][data-lexical-editor="true"]') ||
+                           !window.location.href.includes('composer');
+                });
+                
+                if (finalCheck) {
+                    await this.logStep('Post likely successful (final check)', true);
                     return true;
                 } else {
-                    throw new Error('Post publication could not be confirmed');
+                    throw new Error('Post publication could not be confirmed after multiple attempts');
                 }
             }
 
@@ -717,7 +1597,7 @@ class EnhancedFacebookAutomation {
         console.log('\n🚀 Starting Enhanced Stealth Facebook Automation');
         console.log('🎯 Advanced detection evasion and human-like behavior');
         console.log('🔧 Username:', FB_USERNAME);
-        console.log('🔑 Password:', FB_PASSWORD ? '***' : 'NOT SET');
+        console.log('🔐 Password:', FB_PASSWORD ? '***' : 'NOT SET');
 
         if (!FB_USERNAME || !FB_PASSWORD) {
             console.error('❌ Missing credentials! Please set FB_USERNAME and FB_PASSWORD environment variables.');
@@ -779,8 +1659,8 @@ class EnhancedFacebookAutomation {
 
 // Run the enhanced automation
 (async () => {
-    console.log('🤖 Enhanced Stealth Facebook Automation v3.0');
-    console.log('🎯 Advanced bot detection evasion');
+    console.log('🤖 Enhanced Stealth Facebook Automation v4.0');
+    console.log('🎯 Advanced bot detection evasion with improved post button detection');
     
     const automation = new EnhancedFacebookAutomation();
     await automation.run();
