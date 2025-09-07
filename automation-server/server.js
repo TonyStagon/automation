@@ -19,10 +19,10 @@ app.get('/health', (req, res) => {
 // Run Facebook debug script
 app.post('/api/automation/run-facebook-debug', async(req, res) => {
     try {
-        const scriptPath = path.join(__dirname, '../facebook-login-post-test.js');
+        const scriptPath = path.join(__dirname, '../facebook-demo-test.js');
         const caption = req.body.caption || 'Hello I am New Here';
 
-        console.log(`Executing Facebook debug script with caption: "${caption}"`);
+        console.log(`Executing Enhanced Facebook automation script with caption: "${caption}"`);
 
         // Escape the caption for command line to handle special characters
         const escapedCaption = caption.replace(/"/g, '\\"').replace(/'/g, "\\'");
@@ -74,14 +74,17 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
                 });
             }
 
-            console.log('Script output:', stdout);
+            console.log('Enhanced Facebook automation output:', stdout);
 
-            // Enhanced success detection
+            // Enhanced success detection for demo-test.js
             const successIndicators = [
                 'SUCCESSFUL SOCIAL AUTOMATION WORKFLOW',
-                'Posted:',
-                'Post creation process completed',
-                'Browser kept open'
+                '🎉 Posted:',
+                '✅ Post creation completed successfully',
+                'Browser kept open',
+                'SUCCESS! 🔮 CAPTION:',
+                '🛡️ Stealth Mode Activated',
+                '🌈 FACEBOOK POSTING COMPLETED'
             ];
 
             const hasSuccess = successIndicators.some(indicator =>
@@ -99,14 +102,16 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
             } else {
                 // Check for specific failure reasons
                 let failureReason = 'Unknown failure';
-                if (stdout.includes('credentials not configured')) {
-                    failureReason = 'Facebook credentials not configured';
-                } else if (stdout.includes('Login failed')) {
-                    failureReason = 'Facebook login failed';
-                } else if (stdout.includes('Security challenge')) {
+                if (stdout.includes('credentials not configured') || stderr.includes('credentials')) {
+                    failureReason = 'Facebook credentials not configured (check .env)';
+                } else if (stdout.includes('Login failed') || stdout.includes('login timeout')) {
+                    failureReason = 'Facebook login failed or timed out';
+                } else if (stdout.includes('Security challenge') || stdout.includes('checkpoint')) {
                     failureReason = 'Facebook security challenge detected';
-                } else if (stdout.includes('Post creation failed')) {
+                } else if (stdout.includes('Post creation failed') || stdout.includes('Unable to post')) {
                     failureReason = 'Post creation failed - UI elements not found';
+                } else if (stdout.includes('Could not find Post button')) {
+                    failureReason = 'Could not locate Post button with enhanced detection methods';
                 }
 
                 res.json({

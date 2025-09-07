@@ -1354,7 +1354,9 @@ async checkPostSuccess() {
 
             // Type the post content
             console.log('✏️ Typing post content...');
-            const postMessage = 'Hello world! 🌍 This is an automated test post created with enhanced stealth techniques. #automation #test';
+            // Get caption from command line argument, default to test caption
+            const postMessage = process.argv.length > 2 ? process.argv[2] :
+                               'Default caption: Hello world! 🌍 This is an automated test post created with enhanced stealth techniques. #automation #test';
             
             await this.simulateMouseMovement();
             await textInput.click();
