@@ -6,10 +6,11 @@ import dotenv from 'dotenv';
 // Load environment variables from .env file
 dotenv.config();
 
-// Configuration
-const HEADLESS = false; // Show browser for debugging
-const SCREENSHOT_DIR = './demo-screenshots';
+// Configuration - Use environment variable, default to false for debugging
+const HEADLESS = process.env.HEADLESS === 'true' || process.env.headless === 'true';
+const SCREENSHOT_DIR = HEADLESS ? './debug-screenshots' : './demo-screenshots';
 const FB_URL = 'https://www.facebook.com/login';
+console.log(`🤖 Headless mode: ${HEADLESS ? 'ENABLED' : 'DISABLED (Visible browser)'}`);
 
 // Get credentials from environment variables
 const FB_USERNAME = process.env.FB_USERNAME;
@@ -21,15 +22,16 @@ class EnhancedFacebookAutomation {
         this.page = null;
         this.logSteps = [];
         this.cookieDir = './cookies';
+        this.headless = HEADLESS;
     }
 
     async initialize() {
         await fs.ensureDir(SCREENSHOT_DIR);
         await fs.ensureDir(this.cookieDir);
 
-        // Enhanced stealth launch options
+        // Enhanced stealth launch options with headless optimization
         this.browser = await puppeteer.launch({
-            headless: HEADLESS,
+            headless: process.env.HEADLESS === 'true' ? 'new' : false,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -1631,9 +1633,14 @@ async checkPostSuccess() {
                 console.log('\n⚠️ Post creation failed');
             }
 
-            // Keep browser open for demo
-            console.log('⏳ Keeping browser open for 20 seconds...');
-            await this.humanDelay(20000, 22000);
+            // Keep browser open only if not in headless mode
+            if (!this.headless) {
+                console.log('⏳ Keeping browser open for 20 seconds...');
+                await this.humanDelay(20000, 22000);
+            } else {
+                console.log('🤖 Headless mode: Closing browser automatically');
+                await this.humanDelay(3000, 5000); // Brief delay for cleanup
+            }
 
         } catch (error) {
             console.error('❌ Automation error:', error.message);

@@ -76,15 +76,17 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
 
             console.log('Enhanced Facebook automation output:', stdout);
 
-            // Enhanced success detection for demo-test.js
+            // Enhanced success detection for facebook-demo-test.js with output markers
             const successIndicators = [
-                'SUCCESSFUL SOCIAL AUTOMATION WORKFLOW',
-                '🎉 Posted:',
-                '✅ Post creation completed successfully',
+                'SUCCESS! Enhanced Facebook automation completed',
+                '✅ Post published successfully',
+                '🎉 SUCCESS! Enhanced Facebook automation completed',
                 'Browser kept open',
-                'SUCCESS! 🔮 CAPTION:',
-                '🛡️ Stealth Mode Activated',
-                '🌈 FACEBOOK POSTING COMPLETED'
+                'Post published successfully: SUCCESS',
+                '✅ Login successful: SUCCESS',
+                'EXECUTION SUMMARY:',
+                '📈 Completion rate: 8/8 steps (100%)',
+                '🎯 Advanced detection evasion and human-like behavior'
             ];
 
             const hasSuccess = successIndicators.some(indicator =>
@@ -92,26 +94,36 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
             );
 
             if (hasSuccess) {
+                // Enhanced result analysis
+                const posted = stdout.includes('✅ Post published successfully') ||
+                    stdout.includes('📈 Completion rate: 8/8 steps (100%)');
+
                 res.json({
                     success: true,
                     output: stdout,
-                    message: 'Facebook automation completed successfully!',
-                    posted: stdout.includes('Posted:') || stdout.includes('SUCCESSFUL SOCIAL AUTOMATION'),
+                    message: posted ? '🎉 Facebook post created successfully!' : '🤖 Facebook automation completed - verify browser for results',
+                    posted: posted,
                     caption: caption
                 });
             } else {
-                // Check for specific failure reasons
-                let failureReason = 'Unknown failure';
+                // Enhanced failure reason detection
+                let failureReason = 'Unknown automation failure';
                 if (stdout.includes('credentials not configured') || stderr.includes('credentials')) {
-                    failureReason = 'Facebook credentials not configured (check .env)';
+                    failureReason = 'Facebook credentials not configured in .env file';
                 } else if (stdout.includes('Login failed') || stdout.includes('login timeout')) {
-                    failureReason = 'Facebook login failed or timed out';
+                    failureReason = 'Facebook login failed or authentication issue';
                 } else if (stdout.includes('Security challenge') || stdout.includes('checkpoint')) {
-                    failureReason = 'Facebook security challenge detected';
-                } else if (stdout.includes('Post creation failed') || stdout.includes('Unable to post')) {
-                    failureReason = 'Post creation failed - UI elements not found';
-                } else if (stdout.includes('Could not find Post button')) {
-                    failureReason = 'Could not locate Post button with enhanced detection methods';
+                    failureReason = 'Facebook security challenge detected - complete manually first';
+                } else if (stdout.includes('Post creation failed') || stdout.includes('COMPLETE FAILURE')) {
+                    failureReason = 'Post creation failed - could not locate Facebook post UI elements';
+                } else if (stdout.includes('Could not find Post button') || stdout.includes('failed to click')) {
+                    failureReason = 'Facebook UI changed - post button detection failed';
+                } else if (stdout.includes('timeout') || stderr.includes('timeout')) {
+                    failureReason = 'Facebook automation timeout - taking too long to complete';
+                } else if (stdout.includes('invalid credentials') || stdout.includes('password incorrect')) {
+                    failureReason = 'Facebook credentials incorrect - please update .env file';
+                } else if (stdout.includes('browser crashed') || stderr.includes('browser')) {
+                    failureReason = 'Browser automation failed - try visible mode first';
                 }
 
                 res.json({
