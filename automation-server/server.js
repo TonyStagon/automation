@@ -219,22 +219,31 @@ app.post('/api/automation/run-instagram-debug', async(req, res) => {
 // Run Twitter debug script
 app.post('/api/automation/run-twitter-debug', async(req, res) => {
     try {
-        const scriptPath = path.join(__dirname, '../twitter-login-post-test.js');
+        const scriptPath = path.join(__dirname, '../twitter-demo-test.js');
         const caption = req.body.caption || 'Hello I am New Here on Twitter!';
 
-        console.log(`Executing Twitter debug script with caption: "${caption}"`);
+        console.log(`Executing Enhanced Twitter automation script with caption: "${caption}"`);
 
         // Escape the caption for command line to handle special characters
-        const escapedCaption = caption.replace(/"/g, '\\"');
+        const escapedCaption = caption.replace(/"/g, '\\"').replace(/'/g, "\\'");
 
         // Set environment to keep browser open and run in non-headless mode
         const env = {
             ...process.env,
-            KEEP_BROWSER_OPEN: 'true',
-            HEADLESS: 'false'
+            KEEP_BROWSER_OPEN: req.body.keepBrowserOpen || 'true',
+            HEADLESS: req.body.headless || 'false',
+            // Add timeout settings - longer for analysis
+            BROWSER_TIMEOUT: '80000',
+            PAGE_TIMEOUT: '40000'
         };
 
-        exec(`node ${scriptPath} "${escapedCaption}"`, { env }, (error, stdout, stderr) => {
+        const execOptions = {
+            env,
+            timeout: 0, // no timeout for analysis
+            maxBuffer: 1024 * 1024 * 10
+        };
+
+        exec(`node ${scriptPath} "${escapedCaption}"`, execOptions, (error, stdout, stderr) => {
             if (error) {
                 console.error('Error running Twitter debug script:', error);
                 console.error('Stderr:', stderr);
