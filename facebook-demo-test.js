@@ -1240,17 +1240,106 @@ async checkPostSuccess() {
 }
       
 
+    async uploadImageToFacebook(imagePath) {
+        try {
+            console.log(`📸 Attempting to upload image: ${imagePath}`);
+            
+            // Check if file exists
+            if (!await fs.pathExists(imagePath)) {
+                throw new Error(`Image file not found: ${imagePath}`);
+            }
+
+            await this.logStep('Check image upload button availability', true);
+            
+            // Wait for photo upload button
+            const photoButtonSelectors = [
+                'div[aria-label*="Photo" i]',
+                'div[aria-label*="Add Photo" i]',
+                'div[aria-label*="Upload Photo" i]',
+                'div[data-testid*="photo-attachment"]',
+                'div[role="button"][aria-label*="photo" i]'
+            ];
+
+            const photoButton = await this.waitForElement(photoButtonSelectors, 10000, 3);
+            
+            if (!photoButton) {
+                await this.logStep('Photo upload button not found', false, 'Could not find photo upload interface');
+                console.log('⚠️ Photo upload button not found, continuing with text-only post');
+                return false;
+            }
+
+            await this.simulateMouseMovement();
+            await photoButton.click();
+            await this.humanDelay(2000, 3000);
+            await this.logStep('Click photo upload button', true);
+
+            // Wait for file upload interface
+            await this.humanDelay(3000, 5000);
+
+            // Try direct file input upload
+            const fileInputs = await this.page.$$('input[type="file"]');
+            
+            if (fileInputs.length === 0) {
+                // Keyboard fallback
+                console.log('🔍 No file input found, trying keyboard access...');
+                await this.page.keyboard.press('Tab');
+                await this.humanDelay(500, 1000);
+                await this.page.keyboard.press('Enter');
+                await this.humanDelay(3000, 5000);
+                
+                const fileInputsAfterRetry = await this.page.$$('input[type="file"]');
+                if (fileInputsAfterRetry.length === 0) {
+                    throw new Error('Could not find file upload interface');
+                }
+                await fileInputsAfterRetry[0].uploadFile(imagePath);
+            } else {
+                // Use found file input
+                await fileInputs[0].uploadFile(imagePath);
+            }
+
+            await this.logStep('Upload image file', true);
+            await this.humanDelay(5000, 8000);
+
+            // Check upload success
+            const uploadSuccess = await this.page.evaluate(() => {
+                const progressBars = document.querySelectorAll('[role="progressbar"]');
+                return progressBars.length === 0;
+            });
+
+            if (uploadSuccess) {
+                await this.logStep('Image upload completed', true);
+                console.log('✅ Image uploaded successfully');
+                return true;
+            } else {
+                console.log('⚠️ Upload status unclear, proceeding anyway...');
+                return true;
+            }
+
+        } catch (error) {
+            await this.logStep('Image upload failed', false, error.message);
+            console.log('⚠️ Image upload failed, continuing with text-only post');
+            return false;
+        }
+    }
+        
     async createPost() {
         try {
             console.log('🏠 Navigating to Facebook home...');
-            await this.page.goto('https://www.facebook.com', { 
-                waitUntil: 'networkidle2', 
-                timeout: 30000 
+            await this.page.goto('https://www.facebook.com', {
+                waitUntil: 'networkidle2',
+                timeout: 30000
             });
             
             await this.humanDelay(3000, 5000);
             await this.simulateMouseMovement();
             await this.scrollRandomly();
+
+            // Check for image upload parameter
+            const imagePath = process.env.FB_IMAGE_PATH;
+            if (imagePath) {
+                console.log(`📸 Image upload requested: ${imagePath}`);
+                await this.logStep('Process image upload request', true);
+            }
 
             // Enhanced post creation selectors - updated for 2024 Facebook UI
             const postCreationSelectors = [
@@ -1373,6 +1462,30 @@ async checkPostSuccess() {
             
             await this.typeHumanLike(textInput, postMessage);
             await this.logStep('Type post content', true);
+
+            // Handle image upload if specified
+            if (imagePath) {
+                console.log('📷 Attempting to upload image...');
+                
+                // Wait for composer to settle before attempting upload
+                await this.humanDelay(2000, 3000);
+                
+                const uploadResult = await this.uploadImageToFacebook(imagePath);
+                
+                if (uploadResult) {
+                    console.log('✅ Image upload processed successfully');
+                    await this.logStep('Image upload preparation', true);
+                    
+                    // Wait for upload to complete and UI to stabilize
+                    await this.humanDelay(4000, 6000);
+                } else {
+                    console.log('⚠️ Image upload failed or skipped, continuing with text-only post');
+                    await this.logStep('Image upload failed', false, 'Continuing with text post');
+                    
+                    // Wait anyway to ensure UI stability
+                    await this.humanDelay(2000, 3000);
+                }
+            }
 
             await this.humanDelay(2000, 4000);
 

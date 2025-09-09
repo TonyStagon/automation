@@ -87,7 +87,7 @@ class EnhancedTwitterAutomation {
         }
     }
 
-    // Missing method - human-like typing
+    // Enhanced method - human-like typing with error recovery
     async typeHumanLike(element, text) {
         try {
             await element.click({ clickCount: 3 }); // Select all existing text
@@ -101,7 +101,7 @@ class EnhancedTwitterAutomation {
             
             // Type with human-like delays
             for (const char of text) {
-                await this.page.keyboard.type(char, { 
+                await this.page.keyboard.type(char, {
                     delay: Math.random() * 50 + 25 // 25-75ms delay between characters
                 });
             }
@@ -111,6 +111,384 @@ class EnhancedTwitterAutomation {
             console.log('⚠️ Fallback to simple typing');
             await element.type(text, { delay: 50 });
         }
+    }
+
+    // New enhancement: robust click methods with multiple strategies
+    async enhancedClick(selector, description = 'element') {
+        const clickStrategies = [
+            // Strategy 1: Direct click
+            async () => {
+                const element = await this.page.$(selector);
+                await element.click();
+                console.log(`✅ ${description}: Direct click succeeded`);
+            },
+            
+            // Strategy 2: JavaScript click
+            async () => {
+                await this.page.evaluate((sel) => {
+                    const element = document.querySelector(sel);
+                    if (element) element.click();
+                }, selector);
+                console.log(`✅ ${description}: JavaScript click succeeded`);
+            },
+            
+            // Strategy 3: Mouse movement simulation + click
+            async () => {
+                const element = await this.page.$(selector);
+                const rect = await this.page.evaluate(el => {
+                    if (!el) return null;
+                    const { x, y, width, height } = el.getBoundingClientRect();
+                    return { x: x + width/2, y: y + height/2 };
+                }, element);
+                
+                if (rect) {
+                    await this.page.mouse.move(rect.x, rect.y, { steps: 10 });
+                    await this.humanDelay(200, 400);
+                    await this.page.mouse.click(rect.x, rect.y);
+                    console.log(`✅ ${description}: Mouse simulation click succeeded`);
+                }
+            },
+            
+            // Strategy 4: Focus + Enter key
+            async () => {
+                const element = await this.page.$(selector);
+                await element.focus();
+                await this.humanDelay(100, 300);
+                await this.page.keyboard.press('Enter');
+                console.log(`✅ ${description}: Focus + Enter succeeded`);
+            }
+        ];
+        
+        for (let i = 0; i < clickStrategies.length; i++) {
+            try {
+                await clickStrategies[i]();
+                return true;
+            } catch (error) {
+                console.log(`⚠️ ${description}: Click strategy ${i + 1} failed: ${error.message}`);
+                if (i < clickStrategies.length - 1) {
+                    await this.humanDelay(1000, 2000);
+                }
+            }
+        }
+        
+        throw new Error(`All click strategies failed for ${description}`);
+    }
+
+    // New method - enhanced selector tracking for better debugging
+    async enhanceDebugSelectors(selectors) {
+        const debugSelectors = selectors.map(selector => ({
+            selector,
+            attempts: 0,
+            successes: 0,
+            errors: []
+        }));
+        return { selectors: debugSelectors, totalAttempts: 0 };
+    }
+
+    // New method - sophisticated button validation
+    async validateButton(selector, buttonName = 'button') {
+        try {
+            const element = await this.page.$(selector);
+            if (!element) {
+                throw new Error(`${buttonName} not found`);
+            }
+            
+            const buttonInfo = await this.page.evaluate(el => {
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return {
+                    isVisible: rect.width > 0 && rect.height > 0 &&
+                              style.visibility !== 'hidden' &&
+                              style.display !== 'none',
+                    isDisabled: el.disabled || el.hasAttribute('disabled'),
+                    hasPointerEvents: style.pointerEvents !== 'none',
+                    textContent: el.textContent?.trim() || '',
+                    tagName: el.tagName,
+                    classes: el.className
+                };
+            }, element);
+            
+            console.log(`🔍 ${buttonName} validation:`);
+            console.log(`   - Visible: ${buttonInfo.isVisible}`);
+            console.log(`   - Disabled: ${buttonInfo.isDisabled}`);
+            console.log(`   - Pointer events: ${buttonInfo.hasPointerEvents}`);
+            console.log(`   - Text: "${buttonInfo.textContent}"`);
+            console.log(`   - Tag: ${buttonInfo.tagName}`);
+            console.log(`   - Classes: ${buttonInfo.classes}`);
+            
+            if (!buttonInfo.isVisible) {
+                throw new Error(`${buttonName} is not visible`);
+            }
+            if (buttonInfo.isDisabled) {
+                throw new Error(`${buttonName} is disabled`);
+            }
+            if (!buttonInfo.hasPointerEvents) {
+                throw new Error(`${buttonName} has pointer-events: none`);
+            }
+            
+            return { element, info: buttonInfo };
+        } catch (error) {
+            console.log(`❌ ${buttonName} validation failed:`, error.message);
+            throw error;
+        }
+    }
+
+    // New method - check if we're back at username screen after next click
+    async isUsernameScreenVisible() {
+        try {
+            // Check if any username field is visible again
+            const usernameSelectors = [
+                'input[autocomplete="username"]',
+                'input[name="text"]',
+                'input[data-testid*="text"][type="text"]',
+                'input[placeholder*="email"][type="text"]',
+                'input[placeholder*="user"][type="text"]'
+            ];
+            
+            let visibleUsernameFields = 0;
+            
+            for (const selector of usernameSelectors) {
+                try {
+                    const elements = await this.page.$$(selector);
+                    for (const element of elements) {
+                        const isVisible = await this.page.evaluate(el => {
+                            const style = window.getComputedStyle(el);
+                            return el && style.visibility !== 'hidden' && style.display !== 'none';
+                        }, element);
+                        
+                        if (isVisible) {
+                            const value = await this.page.evaluate(el => el.value, element);
+                            // If field has value or is placeholder username field
+                            if (value || selector.includes('username') || selector.includes('email')) {
+                                visibleUsernameFields++;
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Continue checking other selectors
+                }
+            }
+            
+            return visibleUsernameFields > 0;
+        } catch (error) {
+            console.log('⚠️ Username screen detection failed:', error.message);
+            return false;
+        }
+    }
+
+    // New method - enhanced check for current login state
+    async checkCurrentLoginState() {
+        try {
+            // Check if we're at username screen
+            if (await this.isUsernameScreenVisible()) {
+                return 'username_screen';
+            }
+            
+            // Check if we're at password screen
+            const passwordFields = await this.page.$$('input[type="password"], input[autocomplete*="password"]');
+            if (passwordFields.length > 0) {
+                return 'password_screen';
+            }
+            
+            // Check if we're logged in
+            const loggedInSelectors = [
+                '[data-testid="AppTabBar_Home_Link"]',
+                '[aria-label="Home timeline"]',
+                '[data-testid="SideNav_NewTweet_Button"]',
+                'nav[role="navigation"]'
+            ];
+            
+            for (const selector of loggedInSelectors) {
+                try {
+                    const element = await this.page.$(selector);
+                    if (element) {
+                        const isVisible = await this.page.evaluate(el => {
+                            const style = window.getComputedStyle(el);
+                            return el && style.visibility !== 'hidden' && style.display !== 'none';
+                        }, element);
+                        if (isVisible) return 'logged_in';
+                    }
+                } catch (e) {
+                    // Continue checking other selectors
+                }
+            }
+            
+            return 'unknown';
+        } catch (error) {
+            console.log('⚠️ Login state detection failed:', error.message);
+            return 'unknown';
+        }
+    }
+
+    // New method - advanced username detection with flow recovery
+    async advancedUsernameDetectionAndRecovery() {
+        const maxRetries = 3;
+        let attempt = 1;
+        
+        while (attempt <= maxRetries) {
+            try {
+                console.log(`🔄 Advanced username detection attempt ${attempt}/${maxRetries}...`);
+                
+                // Enhanced username detection with context analysis
+                const usernameSelectors = await this.enhanceSelectorsBasedOnContext([
+                    'input[autocomplete="username"]',
+                    'input[name="text"]',
+                    'input[data-testid*="text"]',
+                    'input[placeholder*="phone"]',
+                    'input[placeholder*="email"]',
+                    'input[placeholder*="user"]'
+                ]);
+                
+                console.log('🔍 Advanced username detection starting...');
+                const usernameInput = await this.waitForElement(usernameSelectors);
+                
+                // Check if field already has content
+                const currentValue = await this.page.evaluate(input => input.value, usernameInput);
+                if (currentValue && currentValue.trim()) {
+                    console.log(`📝 Field already contains: "${currentValue}"`);
+                    
+                    // Clear existing content first
+                    await usernameInput.click({ clickCount: 3 });
+                    await this.page.keyboard.press('Backspace');
+                    await this.humanDelay(500, 1000);
+                }
+                
+                await this.typeHumanLike(usernameInput, TWITTER_USERNAME);
+                await this.logStep('Enter username/email', true);
+                await this.takeDebugScreenshot('02_username_entered');
+                
+                // Enhanced next button detection with robust validation and multiple click strategies
+                const nextButtonSelectors = [
+                    'button[type="submit"]',
+                    'div[role="button"]:has(span:contains("Next"))',
+                    'button:contains("Next")',
+                    '[data-testid*="Login"]',
+                    'button:has(div:contains("Next"))',
+                    'div[data-testid="LoginForm_Login_Button"]',
+                    'button[data-testid="LoginForm_Login_Button"]',
+                    'div[role="button"][tabindex="0"]:has(span:contains("Next"))',
+                    'button:has(> span:contains("Next"))',
+                    'div:has(> span:contains("Next"))'
+                ];
+
+                console.log('🔍 Advanced Next button detection with multiple strategies...');
+                let nextButtonElement = null;
+                let nextButtonSelectorUsed = null;
+                
+                // Try multiple selectors with enhanced validation
+                for (const selector of nextButtonSelectors) {
+                    try {
+                        console.log(`🧪 Trying Next button selector: ${selector}`);
+                        const element = await this.page.$(selector);
+                        
+                        if (element) {
+                            try {
+                                await this.validateButton(selector, 'Next button');
+                                nextButtonElement = element;
+                                nextButtonSelectorUsed = selector;
+                                console.log(`✅ Found viable Next button: ${selector}`);
+                                break;
+                            } catch (validationError) {
+                                console.log(`⚠️ Next button validation failed for ${selector}:`, validationError.message);
+                            }
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Next button selector ${selector} failed:`, error.message);
+                    }
+                }
+                
+                if (!nextButtonElement || !nextButtonSelectorUsed) {
+                    throw new Error('Could not find a viable Next button across all selectors');
+                }
+                
+                // Enhanced click with multiple strategies and comprehensive logging
+                console.log(`🎯 Clicking Next button using: ${nextButtonSelectorUsed}`);
+                
+                // Highlight the button for visual debugging
+                await this.page.evaluate(el => {
+                    el.scrollIntoViewIfNeeded();
+                    const originalStyle = el.style.cssText;
+                    el.style.backgroundColor = 'rgba(29, 161, 242, 0.3)';
+                    el.style.border = '2px solid #1DA1F2';
+                    el.style.boxShadow = '0 0 10px rgba(29, 161, 242, 0.5)';
+                    
+                    // Store original style to restore later
+                    el.setAttribute('data-original-style', originalStyle);
+                }, nextButtonElement);
+                
+                await this.humanDelay(500, 1000);
+                
+                // Multiple click attempts with different strategies
+                let nextClicked = false;
+                let clickAttempt = 1;
+                const maxClickAttempts = 5;
+                
+                while (clickAttempt <= maxClickAttempts && !nextClicked) {
+                    try {
+                        console.log(`🖱️ Next button click attempt ${clickAttempt}/${maxClickAttempts}`);
+                        await this.enhancedClick(nextButtonSelectorUsed, 'Next button');
+                        nextClicked = true;
+                        console.log('✅ Next button click successful!');
+                    } catch (clickError) {
+                        console.log(`❌ Next button click attempt ${clickAttempt} failed:`, clickError.message);
+                        
+                        if (clickAttempt < maxClickAttempts) {
+                            // Take additional screenshots for debugging
+                            await this.takeDebugScreenshot(`next_click_attempt_${clickAttempt}`);
+                            await this.humanDelay(2000, 3000);
+                        }
+                        clickAttempt++;
+                    }
+                }
+                
+                if (!nextClicked) {
+                    throw new Error(`All Next button click attempts (${maxClickAttempts}) failed`);
+                }
+                
+                await this.logStep('Click next', true);
+                await this.humanDelay(3500, 5500);
+                await this.takeDebugScreenshot('03_next_clicked');
+                
+                // Check state after next click
+                await this.humanDelay(2000, 3000);
+                const currentState = await this.checkCurrentLoginState();
+                
+                if (currentState === 'username_screen') {
+                    console.log('⚠️ Username screen reappeared after Next click - likely verification required');
+                    await this.takeDebugScreenshot('username_screen_reappearead');
+                    
+                    if (attempt < maxRetries) {
+                        console.log(`🔄 Retrying username entry (${attempt}/${maxRetries})...`);
+                        attempt++;
+                        await this.humanDelay(3000, 5000);
+                        continue;
+                    } else {
+                        throw new Error('Username screen keeps reappearing after maximum retries');
+                    }
+                }
+                
+                if (currentState === 'password_screen' || currentState === 'logged_in') {
+                    console.log('✅ Successfully moved to next stage:', currentState);
+                    return true;
+                }
+                
+                console.log('ℹ️ Current state after Next click:', currentState);
+                return true;
+                
+            } catch (error) {
+                console.log(`❌ Username detection attempt ${attempt} failed:`, error.message);
+                
+                if (attempt < maxRetries) {
+                    attempt++;
+                    await this.humanDelay(3000, 5000); // Wait before retry
+                    await this.takeDebugScreenshot(`username_retry_${attempt}`);
+                } else {
+                    throw error;
+                }
+            }
+        }
+        
+        throw new Error('All username detection attempts failed');
     }
 
     async waitForElement(selectors, timeout = 15000, retries = 3) {
@@ -189,43 +567,25 @@ class EnhancedTwitterAutomation {
             await this.humanDelay(4000, 6000);
             await this.takeDebugScreenshot('01_login_page_loaded');
 
-            // Enhanced username detection with context analysis
-            const usernameSelectors = await this.enhanceSelectorsBasedOnContext([
-                'input[autocomplete="username"]',
-                'input[name="text"]',
-                'input[data-testid*="text"]',
-                'input[placeholder*="phone"]',
-                'input[placeholder*="email"]',
-                'input[placeholder*="user"]'
-            ]);
-
-            console.log('🔍 Advanced username detection starting...');
-            const usernameInput = await this.waitForElement(usernameSelectors);
-            await this.typeHumanLike(usernameInput, TWITTER_USERNAME);
-            await this.logStep('Enter username/email', true);
-            await this.takeDebugScreenshot('02_username_entered');
-
-            // Enhanced next button detection
-            const nextButtonSelectors = [
-                'button[type="submit"]',
-                'div[role="button"]:has(span:contains("Next"))',
-                'button:contains("Next")',
-                '[data-testid*="Login"]',
-                'button:has(div:contains("Next"))',
-                'div[data-testid="LoginForm_Login_Button"]'
-            ];
-
-            console.log('🔍 Advanced Next button detection...');
-            const nextButton = await this.waitForElement(nextButtonSelectors);
-            await this.page.evaluate(el => {
-                el.scrollIntoViewIfNeeded();
-                el.style.backgroundColor = 'rgba(29, 161, 242, 0.1)';
-            }, nextButton);
+            // Use advanced username detection with recovery capabilities
+            console.log('🚀 Starting advanced username flow with recovery...');
+            await this.advancedUsernameDetectionAndRecovery();
             
-            await nextButton.click();
-            await this.logStep('Click next', true);
-            await this.humanDelay(3500, 5500);
-            await this.takeDebugScreenshot('03_next_clicked');
+            // Verify we're at password stage
+            await this.humanDelay(2000, 3000);
+            const currentState = await this.checkCurrentLoginState();
+            
+            if (currentState !== 'password_screen') {
+                console.log('⚠️ Expected to be at password screen, current state:', currentState);
+                await this.takeDebugScreenshot('unexpected_state_after_username');
+                
+                // If we're back at username screen, try one more recovery
+                if (currentState === 'username_screen') {
+                    console.log('🔄 Performing additional recovery attempt...');
+                    await this.humanDelay(5000, 7000);
+                    await this.advancedUsernameDetectionAndRecovery();
+                }
+            }
 
             // Enhanced password detection
             const passwordSelectors = [
@@ -258,17 +618,31 @@ class EnhancedTwitterAutomation {
             await this.humanDelay(6000, 9000);
             await this.takeDebugScreenshot('05_login_clicked');
 
-            // Enhanced login verification
-            const loginSuccessful = await this.page.evaluate(() => {
-                const successMarkers = [
-                    document.querySelector('[data-testid="AppTabBar_Home_Link"]'),
-                    document.querySelector('[aria-label="Home timeline"]'),
-                    document.querySelector('[data-testid="SideNav_NewTweet_Button"]'),
-                    document.querySelector('nav[role="navigation"]'),
-                    document.title.includes('Home') || document.title.includes('Twitter')
-                ];
-                return successMarkers.some(marker => marker !== null && marker !== false);
-            });
+            // Enhanced login verification with multiple checks
+            console.log('✅ Verifying login status...');
+            
+            // Check multiple times with delays for slow loading
+            let loginSuccessful = false;
+            for (let i = 0; i < 3; i++) {
+                loginSuccessful = await this.page.evaluate(() => {
+                    const successMarkers = [
+                        document.querySelector('[data-testid="AppTabBar_Home_Link"]'),
+                        document.querySelector('[aria-label="Home timeline"]'),
+                        document.querySelector('[data-testid="SideNav_NewTweet_Button"]'),
+                        document.querySelector('nav[role="navigation"]'),
+                        document.querySelector('[data-testid="primaryColumn"]'),
+                        document.title.includes('Home') || document.title.includes('Twitter')
+                    ];
+                    return successMarkers.some(marker => marker !== null && marker !== false);
+                });
+                
+                if (loginSuccessful) break;
+                
+                if (i < 2) {
+                    console.log(`⏳ Login verification attempt ${i + 1}/3 failed, waiting...`);
+                    await this.humanDelay(3000, 5000);
+                }
+            }
 
             if (loginSuccessful) {
                 await this.logStep('Login successful', true);
@@ -281,13 +655,44 @@ class EnhancedTwitterAutomation {
                 return true;
             }
 
-            throw new Error('Login verification timeout - may require manual verification');
+            // Final check - if we're at some unknown state but might be logged in
+            const finalState = await this.checkCurrentLoginState();
+            if (finalState === 'logged_in') {
+                console.log('✅ Final state check confirms login success');
+                await this.logStep('Login successful (state check)', true);
+                return true;
+            }
+
+            throw new Error('Login verification failed - manual verification may be required');
 
         } catch (error) {
             console.log('📊 Strategy analysis:', this.strategyCounters);
+            console.log('🐛 Error details:', error.message);
             
-            // Capture debug screenshot
-            await this.takeDebugScreenshot('error_login');
+            // Enhanced debug information capture
+            try {
+                const currentUrl = await this.page.url();
+                console.log('🌐 Current URL:', currentUrl);
+                
+                const pageTitle = await this.page.title();
+                console.log('📄 Page title:', pageTitle);
+                
+                // Take comprehensive debug screenshot
+                await this.takeDebugScreenshot('error_login_comprehensive');
+                
+                // Try to capture some page content for debugging
+                try {
+                    const bodyText = await this.page.evaluate(() => {
+                        const body = document.querySelector('body');
+                        return body ? body.textContent.substring(0, 200) + '...' : 'No body content';
+                    });
+                    console.log('📝 Page content snippet:', bodyText);
+                } catch (contentError) {
+                    console.log('⚠️ Could not capture page content');
+                }
+            } catch (debugError) {
+                console.log('⚠️ Debug capture failed:', debugError.message);
+            }
             
             await this.logStep('Login failed', false, error.message);
             return false;

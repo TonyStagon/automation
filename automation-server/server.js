@@ -9,7 +9,8 @@ const PORT = 3002;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -281,12 +282,152 @@ app.post('/api/automation/run-twitter-debug', async(req, res) => {
     }
 });
 
+// File upload endpoint
+const multer = require('multer');
+const fs = require('fs-extra');
+const uploadsDir = path.join(__dirname, 'uploads');
+
+// Ensure uploads directory exists
+fs.ensureDirSync(uploadsDir);
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, uniqueSuffix + '-' + file.originalname);
+    }
+});
+
+const upload = multer({
+    storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024 // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept images only
+        if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
+            return cb(new Error('Only image files are allowed!'), false);
+        }
+        cb(null, true);
+    }
+});
+
+// File upload endpoint
+app.post('/api/upload', upload.single('file'), async(req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                error: 'No file uploaded'
+            });
+        }
+
+        console.log(`✅ File uploaded: ${req.file.filename} (${req.file.size} bytes)`);
+
+        res.json({
+            success: true,
+            message: 'File uploaded successfully',
+            fileName: req.file.filename,
+            filePath: path.join('uploads', req.file.filename),
+            ext: path.extname(req.file.originalname).toLowerCase(),
+            size: req.file.size
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'File upload failed',
+            details: error.message
+        });
+    }
+});
+
+// Update Facebook automation endpoint to handle image file paths
+const originalFacebookHandler = app.post.bind(app, '/api/automation/run-facebook-debug');
+app.post('/api/automation/run-facebook-debug', async(req, res) => {
+            try {
+                const { caption, imageFileName, headless = 'false', keepBrowserOpen = 'true' } = req.body;
+
+                console.log(`Executing Facebook automation with caption: "${caption}"${imageFileName ? ` and image: ${imageFileName}` : ''}`);
+
+    // Prepare environment variables
+    const env = {
+      ...process.env,
+      KEEP_BROWSER_OPEN: keepBrowserOpen,
+      HEADLESS: headless,
+      BROWSER_TIMEOUT: '60000',
+      PAGE_TIMEOUT: '30000',
+      FB_IMAGE_PATH: imageFileName ? path.join(uploadsDir, imageFileName) : ''
+    };
+
+    // Escape caption for command line
+    const escapedCaption = caption ? caption.replace(/"/g, '\\"').replace(/'/g, "\\'") : 'Default automated post';
+
+    const scriptPath = path.join(__dirname, '../facebook-demo-test.js');
+    const execOptions = {
+      env,
+      timeout: 0,
+      maxBuffer: 1024 * 1024 * 10
+    };
+
+    exec(`node ${scriptPath} "${escapedCaption}"`, execOptions, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Error running Facebook debug script:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to run automation script',
+          details: stderr || error.message
+        });
+      }
+
+      // Check for success indicators
+      const successIndicators = [
+        'SUCCESS! Enhanced Facebook automation completed',
+        '✅ Post published successfully',
+        '🎉 SUCCESS! Enhanced Facebook automation completed',
+        'Posted:'
+      ];
+
+      const hasSuccess = successIndicators.some(indicator => stdout.includes(indicator));
+
+      if (hasSuccess) {
+        res.json({
+          success: true,
+          output: stdout,
+          message: imageFileName ?
+            '🎉 Facebook post with image created successfully!' :
+            '🎉 Facebook post created successfully!',
+          posted: true,
+          caption: caption,
+          hasImage: !!imageFileName
+        });
+      } else {
+        res.json({
+          success: false,
+          output: stdout,
+          error: 'Post creation may not have completed successfully'
+        });
+      }
+    });
+  } catch (error) {
+    console.error('Error in run-facebook-debug:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        error: 'Endpoint not found'
-    });
+  res.status(404).json({
+    success: false,
+    error: 'Endpoint not found'
+  });
 });
 
 app.listen(PORT, () => {

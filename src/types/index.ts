@@ -16,3 +16,12 @@ export interface SocialPlatform {
   supportsHashtags: boolean;
   supportsMedia: boolean;
 }
+
+export interface AutomationRequest {
+  caption: string;
+  HEADLESS: string;
+  KEEP_BROWSER_OPEN: string;
+  headless: boolean;
+  keepBrowserOpen: boolean;
+  imageFileName?: string;
+}

@@ -33,7 +33,7 @@ export default function PostComposer({ onPostCreate, isPosting, selectedPlatform
           
           if (response.ok) {
             const result = await response.json();
-            finalMedia = result.url;
+            finalMedia = result.fileName;
           } else {
             console.error('File upload failed');
           }

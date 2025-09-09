@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Bot, CheckCircle, XCircle, Loader, Facebook } from 'lucide-react';
 import PostComposer from './components/PostComposer';
 import PlatformSelector from './components/PlatformSelector';
-import type { Post } from '@/types';
+import type { Post, AutomationRequest } from '@/types';
 import { LocalStorageService } from './services/localStorageService';
 
 type PostStatus = 'idle' | 'posting' | 'success' | 'failed';
@@ -33,7 +33,7 @@ function App() {
     };
 
     setPostStatus('posting');
-    setStatusMessage(`Starting Facebook automation with caption: "${postData.caption.substring(0, 50)}${postData.caption.length > 50 ? '...' : ''}"`);
+    setStatusMessage(`Starting Facebook automation with caption: "${postData.caption.substring(0, 50)}${postData.caption.length > 50 ? '...' : ''}"${postData.media ? ' and image' : ''}`);
 
     // Determine environment variables based on headless mode
     const envVars = {
@@ -70,15 +70,22 @@ function App() {
             continue;
         }
 
+        const requestBody: AutomationRequest = {
+          caption: newPost.caption,
+          ...envVars
+        } as AutomationRequest;
+
+        // Add imageFileName if present
+        if (postData.media) {
+          requestBody.imageFileName = postData.media;
+        }
+
         const response = await fetch(`http://localhost:3002${endpoint}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            caption: newPost.caption,
-            ...envVars
-          }),
+          body: JSON.stringify(requestBody),
         });
 
         const result = await response.json();
