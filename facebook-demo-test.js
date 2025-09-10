@@ -1243,81 +1243,296 @@ async checkPostSuccess() {
     async uploadImageToFacebook(imagePath) {
         try {
             console.log(`📸 Attempting to upload image: ${imagePath}`);
+            console.log(`📂 File check: ${await fs.pathExists(imagePath) ? '✅ EXISTS' : '❌ MISSING'}`);
             
             // Check if file exists
             if (!await fs.pathExists(imagePath)) {
-                throw new Error(`Image file not found: ${imagePath}`);
+                throw new Error(`Image file not found: ${imagePath}. Check FB_IMAGE_PATH environment variable.`);
             }
 
             await this.logStep('Check image upload button availability', true);
             
-            // Wait for photo upload button
+            // Wait for photo upload button - test a wider range of selectors
             const photoButtonSelectors = [
+                // Modern selectors
                 'div[aria-label*="Photo" i]',
                 'div[aria-label*="Add Photo" i]',
-                'div[aria-label*="Upload Photo" i]',
+                'div[aria-label*="Upload Photos" i]',
+                'div[aria-label*="Add Photo/Video" i]',
+                'div[aria-label*="Add Files" i]',
                 'div[data-testid*="photo-attachment"]',
-                'div[role="button"][aria-label*="photo" i]'
+                'div[role="button"][aria-label*="photo" i]',
+                'div[aria-label*="Media" i]',
+                
+                // Icon-based selectors
+                'svg[aria-label*="Photo" i]',
+                'svg[aria-label*="Image" i]',
+                'div[class*="photo"]',
+                
+                // Fallback selectors
+                'input[type="file"]',
+                'input[accept*="image"]',
+                
+                // Facebook optimized selectors
+                'div.x1n2onr6[role="button"][aria-label*="photo" i]',
+                'div.xsgj6o6[role="button"]',
+                'div[data-visualcompletion*="icon"]'
             ];
+            
+            console.log('🔍 Testing photo upload button selectors for Facebook');
 
             const photoButton = await this.waitForElement(photoButtonSelectors, 10000, 3);
             
             if (!photoButton) {
+                // Take screenshot for debugging
+                await this.page.screenshot({
+                    path: `${SCREENSHOT_DIR}/no_photo_button_found_${Date.now()}.png`,
+                    fullPage: true
+                });
+                
                 await this.logStep('Photo upload button not found', false, 'Could not find photo upload interface');
-                console.log('⚠️ Photo upload button not found, continuing with text-only post');
+                console.log('⚠️ Photo upload button not found, taking screenshot and continuing with text-only post');
+                
+                // Debug: try to find any upload-related elements
+                const debugElements = await this.page.evaluate(() => {
+                    const allElements = document.querySelectorAll('*');
+                    const uploadElements = [];
+                    
+                    allElements.forEach(el => {
+                        const tag = el.tagName.toLowerCase();
+                        const aria = el.getAttribute('aria-label') || '';
+                        const text = el.textContent || '';
+                        const dataTest = el.getAttribute('data-testid') || '';
+                        const href = el.getAttribute('href') || '';
+                        
+                        if (aria.toLowerCase().includes('photo') ||
+                            aria.toLowerCase().includes('image') ||
+                            aria.toLowerCase().includes('upload') ||
+                            text.toLowerCase().includes('photo') ||
+                            dataTest.toLowerCase().includes('photo') ||
+                            href.toLowerCase().includes('photo')) {
+                            uploadElements.push({
+                                tagName: el.tagName,
+                                ariaLabel: el.getAttribute('aria-label'),
+                                textContent: text.substring(0, 50),
+                                dataTestId: dataTest,
+                                className: el.className,
+                                id: el.id
+                            });
+                        }
+                    });
+                    
+                    return uploadElements;
+                });
+                
+                console.log('🔍 Upload-related elements found:', JSON.stringify(debugElements, null, 2));
+                
                 return false;
             }
 
             await this.simulateMouseMovement();
+            
+            // Get button info before clicking
+            const buttonInfo = await this.page.evaluate((btn) => {
+                const rect = btn.getBoundingClientRect();
+                return {
+                    visible: rect.width > 0 && rect.height > 0,
+                    ariaLabel: btn.getAttribute('aria-label'),
+                    classes: btn.className,
+                    tagName: btn.tagName
+                };
+            }, photoButton);
+            
+            console.log('🖱️ Clicking photo upload button:', buttonInfo);
+            
             await photoButton.click();
             await this.humanDelay(2000, 3000);
+            await this.page.screenshot({
+                path: `${SCREENSHOT_DIR}/after_photo_button_click_${Date.now()}.png`
+            });
             await this.logStep('Click photo upload button', true);
-
+            
             // Wait for file upload interface
+            console.log('⏳ Waiting for file upload dialog to appear...');
             await this.humanDelay(3000, 5000);
-
-            // Try direct file input upload
-            const fileInputs = await this.page.$$('input[type="file"]');
+            
+            // Try direct file input upload - use more comprehensive approach
+            const fileInputSelectors = [
+                'input[type="file"]',
+                'input[accept*="image"]',
+                'input[accept*="photo"]',
+                'input[name="file"]',
+                'input[name="photo"]',
+                'input[data-testid*="file"]'
+            ];
+            
+            let fileInputs = [];
+            for (const selector of fileInputSelectors) {
+                const inputs = await this.page.$$(selector);
+                if (inputs.length > 0) {
+                    console.log(`✅ Found file input with selector: ${selector}`);
+                    fileInputs = inputs;
+                    break;
+                }
+            }
             
             if (fileInputs.length === 0) {
-                // Keyboard fallback
-                console.log('🔍 No file input found, trying keyboard access...');
-                await this.page.keyboard.press('Tab');
-                await this.humanDelay(500, 1000);
-                await this.page.keyboard.press('Enter');
-                await this.humanDelay(3000, 5000);
+                // Show DOM state for debugging
+                console.log('🔍 No visible file inputs found, taking comprehensive screenshot...');
+                await this.page.screenshot({
+                    path: `${SCREENSHOT_DIR}/no_file_inputs_found_${Date.now()}.png`,
+                    fullPage: true
+                });
                 
-                const fileInputsAfterRetry = await this.page.$$('input[type="file"]');
-                if (fileInputsAfterRetry.length === 0) {
-                    throw new Error('Could not find file upload interface');
+                // Try main file input strategies
+                console.log('🔄 Trying main file input detection strategy...');
+                
+                // Strategy 1: Check all input elements
+                fileInputs = await this.page.$$('input');
+                console.log(`Found ${fileInputs.length} total input elements`);
+                
+                // Strategy 2: Look for any file-accepting elements
+                const fileAcceptingElements = await this.page.evaluate(() => {
+                    return Array.from(document.querySelectorAll('*'))
+                        .filter(el => {
+                            const accept = el.getAttribute('accept');
+                            return accept && accept.includes('image');
+                        });
+                });
+                
+                // Strategy 3: Wait a bit longer
+                await this.humanDelay(5000, 7000);
+                fileInputs = await this.page.$$('input[type="file"]');
+                
+                if (fileInputs.length === 0) {
+                    console.log('⚠️ Could not find file upload interface after retry, attempting system dialog');
+                    throw new Error('Could not find file upload interface - Facebook UI may have changed');
                 }
-                await fileInputsAfterRetry[0].uploadFile(imagePath);
-            } else {
-                // Use found file input
+            }
+            
+            console.log(`📁 Found ${fileInputs.length} file input(s), attempting upload...`);
+            
+            // Use the first working file input
+            try {
+                console.log(`💾 Uploading file: ${imagePath}`);
                 await fileInputs[0].uploadFile(imagePath);
+                console.log('✅ File upload command sent successfully');
+                
+                // Take screenshot to verify upload dialog
+                await this.page.screenshot({
+                    path: `${SCREENSHOT_DIR}/file_input_upload_attempt_${Date.now()}.png`
+                });
+            } catch (uploadError) {
+                console.log('❌ File upload error:', uploadError.message);
+                throw uploadError;
             }
 
             await this.logStep('Upload image file', true);
-            await this.humanDelay(5000, 8000);
+            
+            // Wait longer for upload to complete with periodic checks
+            console.log('⏳ Waiting for image upload to process...');
+            let uploadSuccess = false;
+            let uploadAttempts = 0;
+            const maxUploadAttempts = 5;
+            
+            while (uploadAttempts < maxUploadAttempts && !uploadSuccess) {
+                uploadAttempts++;
+                await this.humanDelay(4000, 6000);
+                
+                // Comprehensive upload status check
+                uploadSuccess = await this.page.evaluate(() => {
+                    console.log('🔍 Checking upload status...');
+                    
+                    // Check for upload completion indicators
+                    const progressBars = document.querySelectorAll('[role="progressbar"]');
+                    const hasProgress = progressBars.length > 0;
+                    
+                    // Check for success indicators
+                    const successIndicators = [
+                        document.querySelector('img[src*="blob:"]'),
+                        document.querySelector('img[src*="facebook.com"]'),
+                        document.querySelector('video'),
+                        document.querySelector('[aria-label*="remove" i]'), // Remove media button
+                        document.querySelector('[data-testid*="media"]'),
+                        document.querySelector('.uiScaledImageContainer') // Facebook image container
+                    ].filter(Boolean).length > 0;
+                    
+                    // Check for error indicators
+                    const errorIndicators = document.querySelectorAll('[role="alert"], .error, .failed').length > 0;
+                    
+                    console.log(`📊 Upload status - Progress: ${hasProgress}, Success: ${successIndicators}, Error: ${errorIndicators}`);
+                    
+                    // Success if we have success indicators and no progress bars
+                    return successIndicators || (!hasProgress && !errorIndicators);
+                });
+                
+                if (!uploadSuccess) {
+                    console.log(`🔄 Upload check ${uploadAttempts}/${maxUploadAttempts} - not complete yet`);
+                    if (uploadAttempts === 2) {
+                        await this.page.screenshot({
+                            path: `${SCREENSHOT_DIR}/upload_in_progress_${Date.now()}.png`
+                        });
+                    }
+                }
+            }
 
-            // Check upload success
-            const uploadSuccess = await this.page.evaluate(() => {
-                const progressBars = document.querySelectorAll('[role="progressbar"]');
-                return progressBars.length === 0;
-            });
-
+            // Final verification
             if (uploadSuccess) {
+                // Take success screenshot
+                await this.page.screenshot({
+                    path: `${SCREENSHOT_DIR}/upload_success_${Date.now()}.png`
+                });
+                
                 await this.logStep('Image upload completed', true);
-                console.log('✅ Image uploaded successfully');
+                console.log('✅ Image uploaded successfully - proceeding with caption');
                 return true;
             } else {
-                console.log('⚠️ Upload status unclear, proceeding anyway...');
-                return true;
+                console.log('⚠️ Upload status unclear or timed out, taking final screenshot');
+                
+                // Comprehensive debug of current UI state
+                await this.page.evaluate(() => {
+                    console.log('🔍 FINAL UPLOAD STATUS ANALYSIS:');
+                    
+                    // Check all visible media elements
+                    const mediaElements = Array.from(document.querySelectorAll('img, video, [role="img"]'));
+                    console.log(`📷 Media elements found: ${mediaElements.length}`);
+                    
+                    mediaElements.forEach((el, i) => {
+                        if (i < 10) { // Only show first 10 to avoid log spam
+                            const src = el.src || el.getAttribute('src');
+                            console.log(`  ${i + 1}. ${el.tagName}: src="${src?.substring(0, 50)}"`);
+                        }
+                    });
+                    
+                    // Check upload-related elements
+                    const uploadElements = document.querySelectorAll('[aria-label*="upload"], [aria-label*="photo"], [aria-label*="image"]');
+                    console.log(`🖼️ Upload-related elements: ${uploadElements.length}`);
+                    
+                    // Check for any error messages
+                    const errors = document.querySelectorAll('[role="alert"], .error, .failed, [data-error]');
+                    console.log(`❌ Error elements: ${errors.length}`);
+                });
+                
+                await this.page.screenshot({
+                    path: `${SCREENSHOT_DIR}/upload_final_status_${Date.now()}.png`,
+                    fullPage: true
+                });
+                
+                console.log('🔄 Proceeding with post creation anyway, potential text-only...');
+                return true; // Still return true to proceed with caption
             }
 
         } catch (error) {
             await this.logStep('Image upload failed', false, error.message);
-            console.log('⚠️ Image upload failed, continuing with text-only post');
+            console.log('⚠️ Image upload failed, detailed error:', error.message);
+            
+            // Take error screenshot for troubleshooting
+            await this.page.screenshot({
+                path: `${SCREENSHOT_DIR}/upload_error_${Date.now()}.png`,
+                fullPage: true
+            });
+            
+            console.log('🔄 Continuing with text-only post after upload failure');
             return false;
         }
     }

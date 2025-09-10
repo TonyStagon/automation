@@ -14,7 +14,7 @@ export default function PostComposer({ onPostCreate, isPosting, selectedPlatform
   const [media, setMedia] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [headlessMode, setHeadlessMode] = useState(true);
-
+        
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (caption.trim()) {
@@ -26,7 +26,7 @@ export default function PostComposer({ onPostCreate, isPosting, selectedPlatform
           const formData = new FormData();
           formData.append('file', selectedFile);
           
-          const response = await fetch('/api/upload', {
+          const response = await fetch('http://localhost:3002/api/upload', {
             method: 'POST',
             body: formData,
           });

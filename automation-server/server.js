@@ -17,68 +17,72 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', message: 'Automation server is running' });
 });
 
-// Run Facebook debug script
+// Run Facebook debug script - Updated to handle image files
 app.post('/api/automation/run-facebook-debug', async(req, res) => {
-    try {
-        const scriptPath = path.join(__dirname, '../facebook-demo-test.js');
-        const caption = req.body.caption || 'Hello I am New Here';
+            try {
+                // Parse request data
+                const { caption, imageFileName, headless = 'false', keepBrowserOpen = 'true' } = req.body;
 
-        console.log(`Executing Enhanced Facebook automation script with caption: "${caption}"`);
+                console.log(`Executing Facebook automation with caption: "${caption}"${imageFileName ? ` and image: ${imageFileName}` : ''}`);
 
-        // Escape the caption for command line to handle special characters
-        const escapedCaption = caption.replace(/"/g, '\\"').replace(/'/g, "\\'");
+        // Check if file exists if imageFileName is provided
+        if (imageFileName) {
+            const imageFilePath = path.join(__dirname, 'uploads', imageFileName);
+            const imageExists = fs.existsSync(imageFilePath);
 
-        // Set environment to keep browser open and run in non-headless mode
+            console.log(`📸 Image path: ${imageFilePath}`);
+            console.log(`🔄 Verifying image file exists: ${imageExists ? '✅ YES' : '❌ NO'}`);
+
+            if (!imageExists) {
+                console.log('❌ Image file not found, proceeding without image');
+            }
+        }
+
+        // Prepare environment variables
         const env = {
             ...process.env,
-            KEEP_BROWSER_OPEN: req.body.keepBrowserOpen || 'true',
-            HEADLESS: req.body.headless || 'false',
-            // Add timeout settings
+            KEEP_BROWSER_OPEN: keepBrowserOpen,
+            HEADLESS: headless,
             BROWSER_TIMEOUT: '60000',
-            PAGE_TIMEOUT: '30000'
+            PAGE_TIMEOUT: '30000',
+            FB_IMAGE_PATH: imageFileName ? path.join(__dirname, 'uploads', imageFileName) : ''
         };
 
-        // Increase timeout for the exec command
+        const scriptPath = path.join(__dirname, '../facebook-demo-test.js');
         const execOptions = {
             env,
-            timeout: 0, // no timeout
+            timeout: 0,
             maxBuffer: 1024 * 1024 * 10
         };
+
+        // Escape caption for command line to handle special characters
+        const escapedCaption = caption ? caption.replace(/"/g, '\\"').replace(/'/g, "\\'") : 'Default automated post';
 
         exec(`node ${scriptPath} "${escapedCaption}"`, execOptions, (error, stdout, stderr) => {
             if (error) {
                 console.error('Error running Facebook debug script:', error);
                 console.error('Stderr:', stderr);
 
-                // Check for specific error types
-                let errorType = 'Unknown error';
+                // Enhanced error detection with image context
+                let errorType = imageFileName ? 'Failed to run automation script with image' : 'Failed to run automation script';
                 if (error.message.includes('timeout')) {
-                    errorType = 'Script timeout - Facebook automation took too long';
-                } else if (error.message.includes('ENOENT')) {
-                    errorType = 'Script file not found';
-                } else if (stderr && stderr.includes('credentials')) {
-                    errorType = 'Facebook credentials not configured';
-                } else if (stderr && stderr.includes('login')) {
-                    errorType = 'Facebook login failed';
+                    errorType = `Facebook automation took too long ${imageFileName ? 'with image upload' : ''}`;
+                } else if (facebook_require_manual_image) {
+                    errorType += ' - Manual image review may be needed';
                 }
 
                 return res.status(500).json({
                     success: false,
                     error: errorType,
-                    details: stderr || error.message,
-                    troubleshooting: [
-                        'Check Facebook credentials in .env file',
-                        'Verify internet connection',
-                        'Try running with visible browser mode',
-                        'Check for Facebook security challenges'
-                    ]
+                    details: stderr || error.message
                 });
             }
 
-            console.log('Enhanced Facebook automation output:', stdout);
+            console.log('Facebook automation output:', stdout);
+            console.log('Image processing indication:', imageFileName ? 'Image upload attempted' : 'Text-only post');
 
-            // Enhanced success detection for facebook-demo-test.js with output markers
-            const successIndicators = [
+            // Enhanced success detection with image context
+            const hasSuccess = stdIncludesAny(stdout, [
                 'SUCCESS! Enhanced Facebook automation completed',
                 '✅ Post published successfully',
                 '🎉 SUCCESS! Enhanced Facebook automation completed',
@@ -87,56 +91,30 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
                 '✅ Login successful: SUCCESS',
                 'EXECUTION SUMMARY:',
                 '📈 Completion rate: 8/8 steps (100%)',
-                '🎯 Advanced detection evasion and human-like behavior'
-            ];
-
-            const hasSuccess = successIndicators.some(indicator =>
-                stdout.includes(indicator)
-            );
+                'Posted:'
+            ]);
 
             if (hasSuccess) {
-                // Enhanced result analysis
-                const posted = stdout.includes('✅ Post published successfully') ||
-                    stdout.includes('📈 Completion rate: 8/8 steps (100%)');
+                // Enhanced result analysis for image posts
+                const postedWithImage = imageFileName && stdout.includes('SUCCESS!') && !stdout.includes('SCRIPT COMPLETED');
+                const postedTextOnly = !imageFileName && stdout.includes('SUCCESS!');
 
                 res.json({
                     success: true,
                     output: stdout,
-                    message: posted ? '🎉 Facebook post created successfully!' : '🤖 Facebook automation completed - verify browser for results',
-                    posted: posted,
-                    caption: caption
+                    message: imageFileName ?
+                        (postedWithImage ? '🎉 Facebook post with image created successfully!' : '🚧 Image upload attempted - check logs for results') :
+                        '🎉 Facebook post created successfully!',
+                    posted: postedWithImage || postedTextOnly,
+                    caption: caption,
+                    hasImage: !!imageFileName
                 });
             } else {
-                // Enhanced failure reason detection
-                let failureReason = 'Unknown automation failure';
-                if (stdout.includes('credentials not configured') || stderr.includes('credentials')) {
-                    failureReason = 'Facebook credentials not configured in .env file';
-                } else if (stdout.includes('Login failed') || stdout.includes('login timeout')) {
-                    failureReason = 'Facebook login failed or authentication issue';
-                } else if (stdout.includes('Security challenge') || stdout.includes('checkpoint')) {
-                    failureReason = 'Facebook security challenge detected - complete manually first';
-                } else if (stdout.includes('Post creation failed') || stdout.includes('COMPLETE FAILURE')) {
-                    failureReason = 'Post creation failed - could not locate Facebook post UI elements';
-                } else if (stdout.includes('Could not find Post button') || stdout.includes('failed to click')) {
-                    failureReason = 'Facebook UI changed - post button detection failed';
-                } else if (stdout.includes('timeout') || stderr.includes('timeout')) {
-                    failureReason = 'Facebook automation timeout - taking too long to complete';
-                } else if (stdout.includes('invalid credentials') || stdout.includes('password incorrect')) {
-                    failureReason = 'Facebook credentials incorrect - please update .env file';
-                } else if (stdout.includes('browser crashed') || stderr.includes('browser')) {
-                    failureReason = 'Browser automation failed - try visible mode first';
-                }
-
                 res.json({
                     success: false,
                     output: stdout,
-                    error: failureReason,
-                    troubleshooting: [
-                        'Check browser screenshots in debug-screenshots folder',
-                        'Verify Facebook account is not restricted',
-                        'Try manual login to check for security prompts',
-                        'Update Facebook credentials if needed'
-                    ]
+                    error: 'Post creation may not have completed successfully',
+                    imageProvided: !!imageFileName
                 });
             }
         });
@@ -151,6 +129,10 @@ app.post('/api/automation/run-facebook-debug', async(req, res) => {
     }
 });
 
+// Helper function to check if stdout includes any of the indicators
+function stdIncludesAny(stdout, indicators) {
+    return indicators.some(indicator => stdout.includes(indicator));
+}
 // Error handling middleware
 app.use((error, req, res, next) => {
     console.error('Unhandled error:', error);
@@ -345,82 +327,6 @@ app.post('/api/upload', upload.single('file'), async(req, res) => {
     }
 });
 
-// Update Facebook automation endpoint to handle image file paths
-const originalFacebookHandler = app.post.bind(app, '/api/automation/run-facebook-debug');
-app.post('/api/automation/run-facebook-debug', async(req, res) => {
-            try {
-                const { caption, imageFileName, headless = 'false', keepBrowserOpen = 'true' } = req.body;
-
-                console.log(`Executing Facebook automation with caption: "${caption}"${imageFileName ? ` and image: ${imageFileName}` : ''}`);
-
-    // Prepare environment variables
-    const env = {
-      ...process.env,
-      KEEP_BROWSER_OPEN: keepBrowserOpen,
-      HEADLESS: headless,
-      BROWSER_TIMEOUT: '60000',
-      PAGE_TIMEOUT: '30000',
-      FB_IMAGE_PATH: imageFileName ? path.join(uploadsDir, imageFileName) : ''
-    };
-
-    // Escape caption for command line
-    const escapedCaption = caption ? caption.replace(/"/g, '\\"').replace(/'/g, "\\'") : 'Default automated post';
-
-    const scriptPath = path.join(__dirname, '../facebook-demo-test.js');
-    const execOptions = {
-      env,
-      timeout: 0,
-      maxBuffer: 1024 * 1024 * 10
-    };
-
-    exec(`node ${scriptPath} "${escapedCaption}"`, execOptions, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Error running Facebook debug script:', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Failed to run automation script',
-          details: stderr || error.message
-        });
-      }
-
-      // Check for success indicators
-      const successIndicators = [
-        'SUCCESS! Enhanced Facebook automation completed',
-        '✅ Post published successfully',
-        '🎉 SUCCESS! Enhanced Facebook automation completed',
-        'Posted:'
-      ];
-
-      const hasSuccess = successIndicators.some(indicator => stdout.includes(indicator));
-
-      if (hasSuccess) {
-        res.json({
-          success: true,
-          output: stdout,
-          message: imageFileName ?
-            '🎉 Facebook post with image created successfully!' :
-            '🎉 Facebook post created successfully!',
-          posted: true,
-          caption: caption,
-          hasImage: !!imageFileName
-        });
-      } else {
-        res.json({
-          success: false,
-          output: stdout,
-          error: 'Post creation may not have completed successfully'
-        });
-      }
-    });
-  } catch (error) {
-    console.error('Error in run-facebook-debug:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      details: error.message
-    });
-  }
-});
 
 // 404 handler
 app.use((req, res) => {
