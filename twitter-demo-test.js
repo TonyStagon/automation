@@ -360,15 +360,16 @@ class EnhancedTwitterAutomation {
                 // Enhanced next button detection with robust validation and multiple click strategies
                 const nextButtonSelectors = [
                     'button[type="submit"]',
-                    'div[role="button"]:has(span:contains("Next"))',
-                    'button:contains("Next")',
+                    'div[role="button"]',
                     '[data-testid*="Login"]',
-                    'button:has(div:contains("Next"))',
+                    '[data-testid*="Next"]',
+                    '[data-testid*="next"]',
                     'div[data-testid="LoginForm_Login_Button"]',
                     'button[data-testid="LoginForm_Login_Button"]',
-                    'div[role="button"][tabindex="0"]:has(span:contains("Next"))',
-                    'button:has(> span:contains("Next"))',
-                    'div:has(> span:contains("Next"))'
+                    'div[role="button"][tabindex="0"]',
+                    '[aria-label*="Next"]',
+                    '[aria-label*="next"]',
+                    '[data-testid*="submit"]'
                 ];
 
                 console.log('🔍 Advanced Next button detection with multiple strategies...');
@@ -391,6 +392,9 @@ class EnhancedTwitterAutomation {
                             } catch (validationError) {
                                 console.log(`⚠️ Next button validation failed for ${selector}:`, validationError.message);
                             }
+                        } else {
+                            // Check if element is found but failed validation - log what was found
+                            console.log(`❓ Found element but it's not a button: ${selector}`);
                         }
                     } catch (error) {
                         console.log(`⚠️ Next button selector ${selector} failed:`, error.message);
@@ -571,23 +575,66 @@ class EnhancedTwitterAutomation {
             console.log('🚀 Starting advanced username flow with recovery...');
             await this.advancedUsernameDetectionAndRecovery();
             
-            // Verify we're at password stage
-            await this.humanDelay(2000, 3000);
-            const currentState = await this.checkCurrentLoginState();
+            // Enhanced state verification and transition handling
+            let passwordScreenDetected = false;
+            let retryCount = 0;
+            const maxStateRetries = 3;
             
-            if (currentState !== 'password_screen') {
-                console.log('⚠️ Expected to be at password screen, current state:', currentState);
-                await this.takeDebugScreenshot('unexpected_state_after_username');
+            while (retryCount < maxStateRetries && !passwordScreenDetected) {
+                console.log(`🔄 Password screen state verification attempt ${retryCount + 1}/${maxStateRetries}...`);
+                await this.humanDelay(3000, 5000);
                 
-                // If we're back at username screen, try one more recovery
-                if (currentState === 'username_screen') {
-                    console.log('🔄 Performing additional recovery attempt...');
-                    await this.humanDelay(5000, 7000);
-                    await this.advancedUsernameDetectionAndRecovery();
+                const currentState = await this.checkCurrentLoginState();
+                console.log('🔍 Current login state after username entry:', currentState);
+                
+                if (currentState === 'password_screen') {
+                    passwordScreenDetected = true;
+                    console.log('✅ Successfully transitioned to password screen');
+                    break;
                 }
+                else if (currentState === 'username_screen') {
+                    console.log('🔁 Still at username screen - waiting longer for transition');
+                    await this.humanDelay(4000, 6000);
+                    
+                    // Double-check current URL to see if we're stuck
+                    const currentUrl = await this.page.url();
+                    console.log('🌐 Current URL:', currentUrl);
+                    
+                    if (retryCount === maxStateRetries - 1) {
+                        console.log('⚠️ Maximum retries reached, performing advanced username recovery');
+                        await this.advancedUsernameDetectionAndRecovery();
+                    }
+                }
+                else if (currentState === 'unknown') {
+                    console.log('🔎 Unknown state - checking if password fields exist');
+                    
+                    // Direct check for password fields as fallback
+                    try {
+                        const passwordFields = await this.page.$$('input[type="password"], input[autocomplete*="password"]');
+                        if (passwordFields.length > 0) {
+                            console.log('✅ Password fields detected via direct query');
+                            passwordScreenDetected = true;
+                            break;
+                        }
+                    } catch (checkError) {
+                        console.log('⚠️ Password field direct check failed:', checkError.message);
+                    }
+                }
+                else if (currentState === 'logged_in') {
+                    console.log('✅ Already logged in - proceeding directly');
+                    return true;
+                }
+                
+                retryCount++;
+            }
+            
+            if (!passwordScreenDetected) {
+                console.log('❌ Failed to detect password screen after maximum retries');
+                await this.takeDebugScreenshot('failed_password_detection');
+                throw new Error('Password screen not detected after username entry');
             }
 
-            // Enhanced password detection
+            // Enhanced password detection with additional verification
             const passwordSelectors = [
                 'input[autocomplete="current-password"]',
                 'input[name="password"]',
@@ -596,27 +643,129 @@ class EnhancedTwitterAutomation {
                 'input[data-testid*="password"]'
             ];
 
-            console.log('🔍 Advanced password detection...');
-            const passwordInput = await this.waitForElement(passwordSelectors);
+            console.log('🔍 Advanced password detection with redundancy checks...');
+            
+            // Additional wait to ensure password field is fully interactable
+            await this.humanDelay(1000, 2000);
+            
+            // Enhanced password detection with multiple verification
+            let passwordInput = null;
+            let detectionAttempts = 0;
+            const maxDetectionAttempts = 3;
+            
+            while (detectionAttempts < maxDetectionAttempts && !passwordInput) {
+                for (const selector of passwordSelectors) {
+                    try {
+                        const element = await this.page.$(selector);
+                        if (element) {
+                            // Verify element is visible and interactable
+                            const isVisible = await this.page.evaluate((el) => {
+                                if (!el) return false;
+                                const style = window.getComputedStyle(el);
+                                return style.visibility !== 'hidden' && style.display !== 'none';
+                            }, element);
+                            
+                            if (isVisible) {
+                                passwordInput = element;
+                                console.log(`✅ Valid password field found: ${selector}`);
+                                break;
+                            }
+                        }
+                    } catch (error) {
+                        console.log(`⚠️ Password detection attempt ${detectionAttempts + 1} failed for ${selector}:`, error.message);
+                    }
+                }
+                
+                if (!passwordInput && detectionAttempts < maxDetectionAttempts - 1) {
+                    await this.humanDelay(2000, 3000);
+                }
+                detectionAttempts++;
+            }
+            
+            if (!passwordInput) {
+                throw new Error('Could not find a valid password field');
+            }
+
             await this.typeHumanLike(passwordInput, TWITTER_PASSWORD);
             await this.logStep('Enter password', true);
             await this.takeDebugScreenshot('04_password_entered');
 
-            // Enhanced login button detection
+            // Enhanced login button detection with validation and redundancy
+            console.log('🔍 Advanced login button detection with validation...');
+            
+            // Wait a moment after password entry to ensure button is enabled
+            await this.humanDelay(1000, 2000);
+            
             const loginButtonSelectors = [
                 'button[data-testid*="Login"]',
                 'button[type="submit"]',
-                'div[role="button"]:has(span:contains("Log in"))',
-                'button:has(span:contains("Log in"))',
-                'div[data-testid*="login"]'
+                'div[role="button"]',
+                'div[data-testid*="login"]',
+                '[data-testid*="submit"]',
+                '[aria-label*="Log in"]',
+                '[aria-label*="login"]',
+                'button[data-testid*="submit"]'
             ];
 
-            console.log('🔍 Advanced login button detection...');
-            const loginButton = await this.waitForElement(loginButtonSelectors);
-            await loginButton.click();
-            await this.logStep('Click login', true);
-            await this.humanDelay(6000, 9000);
-            await this.takeDebugScreenshot('05_login_clicked');
+            let loginButton = null;
+            let loginValidationAttempts = 0;
+            const maxLoginValidationAttempts = 3;
+            
+            while (loginValidationAttempts < maxLoginValidationAttempts && !loginButton) {
+                for (const selector of loginButtonSelectors) {
+                    try {
+                        const element = await this.page.$(selector);
+                        if (element) {
+                            // Additional button validation
+                            const buttonInfo = await this.page.evaluate(el => {
+                                const rect = el.getBoundingClientRect();
+                                const style = window.getComputedStyle(el);
+                                return {
+                                    isVisible: rect.width > 0 && rect.height > 0 &&
+                                              style.visibility !== 'hidden' &&
+                                              style.display !== 'none',
+                                    isDisabled: el.disabled || el.hasAttribute('disabled'),
+                                    hasPointerEvents: style.pointerEvents !== 'none'
+                                };
+                            }, element);
+                            
+                            if (buttonInfo.isVisible && !buttonInfo.isDisabled && buttonInfo.hasPointerEvents) {
+                                loginButton = { element, selector };
+                                console.log(`✅ Valid login button found: ${selector}`);
+                                break;
+                            }
+                        }
+                    } catch (validationError) {
+                        console.log(`⚠️ Login validation attempt ${loginValidationAttempts + 1} failed for ${selector}:`, validationError.message);
+                    }
+                }
+                
+                if (!loginButton && loginValidationAttempts < maxLoginValidationAttempts - 1) {
+                    await this.humanDelay(1000, 2000);
+                }
+                loginValidationAttempts++;
+            }
+            
+            if (!loginButton) {
+                // Fallback: try using waitForElement if direct validation fails
+                try {
+                    const fallbackButton = await this.waitForElement(loginButtonSelectors);
+                    loginButton = { element: fallbackButton, selector: 'fallback' };
+                    console.log('ℹ️ Using fallback login button detection');
+                } catch (fallbackError) {
+                    throw new Error('Could not find a valid login button across all selectors and retries');
+                }
+            }
+
+            // Enhanced click with validation
+            if (loginButton && loginButton.element) {
+                await this.enhancedClick(loginButton.selector, 'Login button');
+                await this.logStep('Click login', true);
+                await this.humanDelay(6000, 9000);
+                await this.takeDebugScreenshot('05_login_clicked');
+            } else {
+                throw new Error('Login button element not available for clicking');
+            }
 
             // Enhanced login verification with multiple checks
             console.log('✅ Verifying login status...');

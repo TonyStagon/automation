@@ -1,9 +1,13 @@
 import puppeteer from 'puppeteer';
 import fs from 'fs-extra';
 import path from 'path';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 // Configuration
-const HEADLESS = process.env.HEADLESS === 'true' || false;
+const HEADLESS = process.env.HEADLESS === 'true' || process.env.headless === 'true' || false;
 const SCREENSHOT_DIR = './debug-screenshots';
 const TWITTER_URL = 'https://x.com/i/flow/login';
 const TWITTER_USERNAME = process.env.TWIT_USERNAME || process.env.TWITTER_USERNAME || '';
@@ -407,9 +411,12 @@ class TwitterAutomation {
                 return { success: false, error: 'Twitter credentials not configured' };
             }
 
-            await this.initialize();
             console.log('🚀 Starting Twitter automation...');
+            console.log(`🔧 Username: ${TWITTER_USERNAME}`);
+            console.log(`🔐 Password: ${TWITTER_PASSWORD.replace(/./g, '•')}`);
             console.log(`📝 Caption: "${caption}"`);
+            
+            await this.initialize();
 
             // Login with extended timeout handling
             const loginSuccess = await this.login();
