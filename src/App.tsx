@@ -54,14 +54,15 @@ function App() {
         
         let endpoint = '';
         switch (platformId) {
+          case 'twitter':
+            // Production Twitter endpoint with enhanced error handling
+            endpoint = '/api/automation/run-twitter';
+            break;
           case 'facebook':
             endpoint = '/api/automation/run-facebook-debug';
             break;
           case 'instagram':
             endpoint = '/api/automation/run-instagram-debug';
-            break;
-          case 'twitter':
-            endpoint = '/api/automation/run-twitter-debug';
             break;
           // Add cases for other platforms as endpoints are implemented
           default:

@@ -897,7 +897,7 @@ if (currentUrl.includes('login') || currentUrl.includes('signin')) {
 
             await this.logStep('Open tweet composer', true);
 
-            // Type the tweet content
+            // Type the tweet content using the command line argument
             console.log('✏️ Typing tweet content...');
             const tweetMessage = process.argv.length > 2 ? process.argv[2] :
                                'Default tweet: Hello world! 🌍 This is an automated test tweet created with enhanced stealth techniques. #automation #test';
@@ -930,11 +930,10 @@ if (currentUrl.includes('login') || currentUrl.includes('signin')) {
             
             // ACTUALLY TYPE THE TWEET CONTENT - This was missing!
             if (textInput) {
-                const tweetMessageText = "Hello YOU";
-                console.log(`✏️ Typing: "${tweetMessageText}"`);
-                await this.typeHumanLike(textInput, tweetMessageText);
+                const captionText = tweetMessage || "Hello YOU"; // Use tweet content from UI or fallback
+                console.log(`✏️ Typing: "${captionText}"`);
+                await this.typeHumanLike(textInput, captionText);
                 await this.logStep('Type tweet content', true);
-                
                 await this.humanDelay(2000, 3000);
 
                 // TAKE SCREENSHOT OF TWEET WITH CONTENT
