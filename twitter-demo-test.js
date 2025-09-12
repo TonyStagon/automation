@@ -219,7 +219,7 @@ class EnhancedTwitterAutomation {
         return false;
     }
 
-    async waitForElement(selectors, timeout = 30000, retries = 3) {
+    async waitForElement(selectors, timeout = 90000, retries = 5) { // Increased timeout from 30000 to 90000ms, retries from 3 to 5
         const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
         
         let attempt = 1;
@@ -231,7 +231,7 @@ class EnhancedTwitterAutomation {
             for (const selector of selectorArray) {
                 try {
                     await this.page.waitForSelector(selector, {
-                        timeout: Math.max(timeout / selectorArray.length, 2000),
+                        timeout: Math.max(timeout / selectorArray.length, 5000), // Increased minimum per-selector timeout from 2000ms to 5000ms
                         visible: true
                     });
                     
@@ -269,7 +269,14 @@ class EnhancedTwitterAutomation {
                         console.log(`✅ Found valid, interactable element: ${selector}`);
                         return element;
                     } else {
-                        console.log(`ℹ️ Found selector ${selector} but element is not interactable`);
+                        console.log(`ℹ️ Found selector ${selector} but element is not interactable - trying next selector`);
+                        // Scroll element into view before continuing
+                        await this.page.evaluate(el => {
+                            if (el && el.scrollIntoView) {
+                                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                        }, element);
+                        await this.humanDelay(500, 1000);
                     }
                     
                 } catch (e) {
@@ -293,9 +300,9 @@ class EnhancedTwitterAutomation {
             // Load cookies first
             const hasCookies = await this.loadCookies();
             
-            await this.page.goto('https://x.com', { 
-                waitUntil: 'networkidle2', 
-                timeout: 30000 
+            await this.page.goto('https://x.com', {
+                waitUntil: 'networkidle2',
+                timeout: 60000 // Increased from 30000 to 60000ms (1 minute)
             });
 
             await this.humanDelay(3000, 5000);
@@ -324,8 +331,8 @@ class EnhancedTwitterAutomation {
 
             
                try {
-            // Wait briefly for logged-in indicators
-            await this.page.waitForSelector(loggedInSelectors[0], { timeout: 3000 });
+            // Wait more time for logged-in indicators
+            await this.page.waitForSelector(loggedInSelectors[0], { timeout: 10000 });
             
             // Double-check by looking for logged-out indicators
             const loggedOutElements = await this.page.$$(loggedOutSelectors[0]);
@@ -345,13 +352,34 @@ class EnhancedTwitterAutomation {
             // Go to login page
            // Go to login page directly
         console.log('🔐 Navigating to dedicated login page...');
-        await this.page.goto(TWITTER_URL, { 
-            waitUntil: 'networkidle2', 
-            timeout: 50000 
+        await this.page.goto(TWITTER_URL, {
+            waitUntil: 'networkidle2',
+            timeout: 120000 // Increased from 50000 to 120000ms (2 minutes)
         });
 
             await this.logStep('Navigate to Twitter Login', true);
         await this.humanDelay(2000, 4000);
+
+
+
+        const currentUrl = await this.page.url();
+console.log(`🌐 Current URL: ${currentUrl}`);
+
+// Take a screenshot for debugging
+await this.page.screenshot({ 
+    path: path.join(SCREENSHOT_DIR, 'initial_page.png') 
+});  
+
+if (currentUrl.includes('login') || currentUrl.includes('signin')) {
+    console.log('🔐 Detected login page - proceeding with login');
+    // Continue with login process
+} else if (currentUrl.includes('home') || currentUrl.includes('feed')) {
+    console.log('🏠 Detected home/feed page - likely logged in');
+    // Verify with additional checks
+} else {
+    console.log('❓ Unknown page state - proceeding with login to be safe');
+    await this.page.goto(TWITTER_URL);
+}
 
             // Find and fill username
             const usernameSelectors = [
@@ -379,11 +407,75 @@ class EnhancedTwitterAutomation {
                 '[aria-label*="Next"]'
             ];
 
-            const nextButton = await this.waitForElement(nextButtonSelectors);
-            await nextButton.click();
-            await this.logStep('Click next button', true);
-
-            await this.humanDelay(3000, 5000);
+            console.log('🔍 Attempting to click Next button...');
+            console.log('🖱️ Taking screenshot before Next button interaction...');
+            await this.page.screenshot({
+                path: path.join(SCREENSHOT_DIR, 'before_next_button_click.png'),
+                fullPage: false
+            });
+            
+            // Check if element is really visible and interactable
+            const isActuallyVisible = await this.page.evaluate((el) => {
+                if (!el) return false;
+                const rect = el.getBoundingClientRect();
+                const style = window.getComputedStyle(el);
+                return rect.width > 0 && rect.height > 0 &&
+                       style.display !== 'none' &&
+                       style.visibility !== 'hidden' &&
+                       parseFloat(style.opacity) > 0.1;
+            }, nextButton);
+            
+            if (!isActuallyVisible) {
+                console.log('⚠️ Next button may not be visible/ready - scrolling into view');
+                await this.page.evaluate(el => {
+                    if (el && el.scrollIntoView) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, nextButton);
+                await this.humanDelay(1500, 2500);
+            }
+            
+            // Enhanced next button click with multiple strategies
+            let nextClicked = false;
+            let clickError = null;
+            
+            // Strategy 1: Regular click
+            try {
+                console.log('🔄 Trying standard click for Next button');
+                await nextButton.click();
+                nextClicked = true;
+            } catch (e) {
+                clickError = e;
+                console.log('❌ Standard click failed, trying JavaScript click');
+                
+                // Strategy 2: JavaScript click
+                try {
+                    await this.page.evaluate(el => el.click(), nextButton);
+                    nextClicked = true;
+                } catch (e2) {
+                    clickError = e2;
+                    console.log('❌ JavaScript click failed, trying keyboard');
+                    
+                    // Strategy 3: Keyboard navigation
+                    try {
+                        await nextButton.focus();
+                        await this.humanDelay(500, 800);
+                        await this.page.keyboard.press('Enter');
+                        nextClicked = true;
+                    } catch (e3) {
+                        clickError = e3;
+                        console.log('❌ Keyboard press failed for Next button');
+                    }
+                }
+            }
+            
+            if (nextClicked) {
+                await this.logStep('Click next button', true);
+                console.log('✅ Next button clicked successfully');
+                await this.humanDelay(5000, 7000); // Longer wait after Next click
+            } else {
+                throw new Error(`Next button click failed: ${clickError?.message || 'All strategies failed'}`);
+            }
 
             // Find and fill password
             const passwordSelectors = [
@@ -432,6 +524,10 @@ class EnhancedTwitterAutomation {
             }
 
         } catch (error) {
+            // Enhanced error handling with retry suggestion
+            console.error('❌ Login process failed:', error.message);
+            console.log('🔄 Hint: Try checking if there are security challenges or CAPTCHAs');
+            console.log('   To retry, clear cookies file and restart script');
             await this.logStep('Login failed', false, error.message);
             return false;
         }
@@ -684,7 +780,7 @@ class EnhancedTwitterAutomation {
                 '[aria-label*="image" i]'
             ];
 
-            const mediaButton = await this.waitForElement(mediaButtonSelectors, 10000, 3);
+            const mediaButton = await this.waitForElement(mediaButtonSelectors, 30000, 5); // Increased timeout for media button
             
             if (!mediaButton) {
                 console.log('⚠️ Media upload button not found');
@@ -707,16 +803,23 @@ class EnhancedTwitterAutomation {
     }
 
     async createTweet() {
+        let textInput = null; // Declare textInput at function level for accessibility
+        
         try {
             console.log('🏠 Navigating to Twitter home...');
             await this.page.goto('https://x.com/home', {
                 waitUntil: 'networkidle2',
-                timeout: 70000
+                timeout: 120000 // Increased from 70000 to 120000ms (2 minutes)
             });
             
-            await this.humanDelay(3000, 5000);
+            await this.humanDelay(7000, 10000); // Longer delays after login navigation
             await this.simulateMouseMovement();
             await this.scrollRandomly();
+            // Additional state check after load completion
+            await this.page.evaluate(() => {
+                window.scrollTo(0, 300);
+            });
+            await this.humanDelay(2000, 3000);
 
             // Check for image upload parameter
             const imagePath = process.env.TWITTER_IMAGE_PATH;
@@ -736,7 +839,6 @@ class EnhancedTwitterAutomation {
             ];
 
             let composerOpened = false;
-            let textInput = null;
 
             // Try to find tweet creation area
             for (const selector of tweetCreationSelectors) {
@@ -770,7 +872,7 @@ class EnhancedTwitterAutomation {
                         ];
                         
                         try {
-                            textInput = await this.waitForElement(textInputSelectors, 5000);
+                            textInput = await this.waitForElement(textInputSelectors, 15000); // Increased timeout for text input
                             composerOpened = true;
                             console.log('✅ Composer opened, found text input');
                             break;
@@ -818,15 +920,95 @@ class EnhancedTwitterAutomation {
                 fullPage: true
             });
             
-            return false;
+            console.log('❌ Tweet composition failed - proceeding with typing outside catch');
         }
         
-        // Continue with tweet creation logic here
-        await this.humanDelay(2000, 3000);
+        // MOVE ALL TWEET LOGIC INSIDE TRY-CATCH
+        // Type the tweet content and try to post
+        try {
+            console.log('🎯 Attempting to type and post tweet content...');
+            
+            // ACTUALLY TYPE THE TWEET CONTENT - This was missing!
+            if (textInput) {
+                const tweetMessageText = "Hello YOU";
+                console.log(`✏️ Typing: "${tweetMessageText}"`);
+                await this.typeHumanLike(textInput, tweetMessageText);
+                await this.logStep('Type tweet content', true);
+                
+                await this.humanDelay(2000, 3000);
+
+                // TAKE SCREENSHOT OF TWEET WITH CONTENT
+                await this.page.screenshot({
+                    path: path.join(SCREENSHOT_DIR, 'tweet_with_message.png'),
+                    fullPage: true
+                });
+
+                // Find and click the TWEET/Post button
+                console.log('🔍 Looking for tweet button...');
+                
+                const tweetButton = await this.findTweetButton();
+                if (tweetButton) {
+                    console.log('✅ Found tweet button');
+                    
+                    const posted = await this.enhancedTweetButtonClick(tweetButton);
+                    if (posted) {
+                        await this.logStep('Tweet posted successfully', true);
+                        console.log('🎉 Posted: "Hello YOU"');
+                        
+                        await this.humanDelay(3000, 5000);
+                        await this.page.screenshot({
+                            path: path.join(SCREENSHOT_DIR, 'tweet_posted_success.png')
+                        });
+                        return true;
+                    } else {
+                        console.log('❌ All click methods failed');
+                        await this.logStep('Tweet posting failed', false, 'All click methods failed');
+                    }
+                } else {
+                    throw new Error('Tweet button not found');
+                }
+            } else {
+                throw new Error('Text input element not available for typing');
+            }
+            
+        } catch (tweetError) {
+            console.log('❌ Secondary tweet posting attempt failed:', tweetError.message);
+            await this.logStep('Failed to post tweet', false, tweetError.message);
+            
+            await this.page.screenshot({
+                path: path.join(SCREENSHOT_DIR, 'final_tweet_error.png')
+            });
+        }
+
+        console.log('➡️ Tweet creation process completed');
         
-        // [Rest of the tweet creation logic would continue here...]
-        console.log('✅ Tweet content cleared and focused - implementation would continue here');
-        return true;
+        return false;
+    }
+
+    async retryOperation(operation, name, maxRetries = 2) {
+        console.log(`🔄 Starting retry operation: ${name}`);
+        
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                const result = await operation();
+                if (result) {
+                    console.log(`✅ ${name} succeeded on attempt ${attempt}`);
+                    return true;
+                }
+            } catch (error) {
+                console.log(`❌ ${name} attempt ${attempt} failed:`, error.message);
+                
+                if (attempt === maxRetries) {
+                    throw error;
+                }
+                
+                // Wait before retrying with exponential backoff
+                const backoffTime = 2000 * Math.pow(2, attempt - 1);
+                console.log(`⏰ Retrying in ${backoffTime}ms...`);
+                await this.humanDelay(backoffTime, backoffTime + 1000);
+            }
+        }
+        return false;
     }
 
     async cleanup() {
@@ -850,8 +1032,9 @@ class EnhancedTwitterAutomation {
         try {
             await this.initialize();
             
-            // Login phase
+            // Login phase with enhanced timeout info
             console.log('\n🔐 Authentication Phase:');
+            console.log('⏱️  Login navigation extended to 2+ minutes for network resilience');
             const loginResult = await this.login();
             
             if (!loginResult) {
