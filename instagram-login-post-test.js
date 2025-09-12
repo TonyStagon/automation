@@ -28,11 +28,77 @@ const TFA_DETECTION_PATTERNS = [
     /code[-\s]?sent[-\s]?(?:to|via)/i
 ];
 
+import { CookieManager } from './utils/cookie-manager.js';
+
 class InstagramDebugPro {
     constructor() {
         this.browser = null;
         this.page = null;
         this.logSteps = [];
+        this.cookieManager = new CookieManager();
+    }
+
+    async setCookies() {
+        try {
+            const cookies = await this.cookieManager.loadCookies('instagram');
+
+            if (cookies && cookies.length > 0) {
+                console.log('🍪 Loading saved Instagram cookies...');
+
+                // Set cookies for instagram.com domain
+                const instagramCookies = cookies.filter(cookie =>
+                    cookie.domain === '.instagram.com'
+                );
+
+                if (instagramCookies.length > 0) {
+                    await this.page.setCookie(...instagramCookies);
+                    console.log(`✅ Loaded ${instagramCookies.length} Instagram cookies`);
+
+                    // Check if cookies are valid
+                    const cookiesValid = await this.cookieManager.checkCookiesValid('instagram');
+                    if (cookiesValid) {
+                        console.log('🎯 Cookies are valid, attempting direct access...');
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (error) {
+            console.log('❌ Error loading cookies:', error.message);
+            return false;
+        }
+    }
+
+    async saveCookies() {
+        try {
+            const cookies = await this.page.cookies();
+            await this.cookieManager.saveCookies('instagram', cookies);
+            console.log('✅ Instagram cookies saved successfully');
+        } catch (error) {
+            console.log('⚠️ Could not save cookies:', error.message);
+        }
+    }
+
+    async authWithCookies() {
+        try {
+            // Try to use cookies first
+            const cookieAccess = await this.setCookies();
+            if (cookieAccess) {
+                await this.page.goto('https://www.instagram.com/', { waitUntil: 'networkidle0', timeout: 30000 });
+                const loggedIn = await this.checkLoginSuccess();
+
+                if (loggedIn) {
+                    console.log('🎉 Logged in successfully using cookies!');
+                    await this.logStep('Instagram Login (Cookies)', true);
+                    await this.saveCookies(); // Refresh cookies
+                    return true;
+                }
+            }
+            return false;
+        } catch (error) {
+            console.log('❌ Cookie-based authentication failed:', error.message);
+            return false;
+        }
     }
 
     async initialize() {

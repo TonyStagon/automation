@@ -13,11 +13,14 @@ const TWITTER_URL = 'https://x.com/i/flow/login';
 const TWITTER_USERNAME = process.env.TWIT_USERNAME || process.env.TWITTER_USERNAME || '';
 const TWITTER_PASSWORD = process.env.TWIT_PASSWORD || process.env.TWITTER_PASSWORD || '';
 
+import { CookieManager } from './utils/cookie-manager.js';
+
 class TwitterAutomation {
     constructor() {
         this.browser = null;
         this.page = null;
         this.logSteps = [];
+        this.cookieManager = new CookieManager();
     }
 
     async initialize() {
@@ -87,8 +90,66 @@ class TwitterAutomation {
         return step;
     }
 
+    async setCookies() {
+        try {
+            const cookies = await this.cookieManager.loadCookies('twitter');
+            
+            if (cookies && cookies.length > 0) {
+                console.log('🍪 Loading saved Twitter cookies...');
+                
+                // Set cookies for twitter.com and x.com domains
+                const twitterCookies = cookies.filter(cookie =>
+                    cookie.domain === '.twitter.com' || cookie.domain === '.x.com'
+                );
+                
+                if (twitterCookies.length > 0) {
+                    await this.page.setCookie(...twitterCookies);
+                    console.log(`✅ Loaded ${twitterCookies.length} Twitter cookies`);
+                    
+                    // Check if cookies are valid
+                    const cookiesValid = await this.cookieManager.checkCookiesValid('twitter');
+                    if (cookiesValid) {
+                        console.log('🎯 Cookies are valid, attempting direct access...');
+                        return true;
+                    }
+                }
+            }
+            return false;
+        } catch (error) {
+            console.log('❌ Error loading cookies:', error.message);
+            return false;
+        }
+    }
+
+    async saveCookies() {
+        try {
+            const cookies = await this.page.cookies();
+            await this.cookieManager.saveCookies('twitter', cookies);
+            console.log('✅ Twitter cookies saved successfully');
+        } catch (error) {
+            console.log('⚠️ Could not save cookies:', error.message);
+        }
+    }
+
     async login() {
         console.log('\n🔐 Starting Twitter login...');
+        
+        // Try to use existing cookies first
+        const cookieAccess = await this.setCookies();
+        if (cookieAccess) {
+            // Navigate to Twitter home to check if we're logged in
+            await this.page.goto('https://twitter.com/home', { waitUntil: 'networkidle0', timeout: 30000 });
+            const loggedIn = await this.checkLoginSuccess();
+            
+            if (loggedIn) {
+                console.log('🎉 Logged in successfully using cookies!');
+                await this.logStep('Twitter Login (Cookies)', true);
+                await this.saveCookies(); // Refresh cookies if needed
+                return true;
+            } else {
+                console.log('❌ Cookies not valid, proceeding with standard login...');
+            }
+        }
         
         try {
             // Navigate to Twitter login
@@ -423,6 +484,9 @@ class TwitterAutomation {
             if (!loginSuccess) {
                 return { success: false, error: 'Login failed' };
             }
+
+            // Save cookies after successful login if they weren't already valid
+            await this.saveCookies();
 
             // Post with retry logic
             let postSuccess = false;
