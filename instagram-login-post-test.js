@@ -181,6 +181,10 @@ class InstagramDebugPro {
         return step;
     }
 
+    async humanDelay(min = 1000, max = 3000) {
+        await new Promise(resolve => setTimeout(resolve, Math.random() * (max - min) + min));
+    }
+
     async discoverLoginElements() {
         console.log('\n🔍 Scanning Instagram login page for current selectors...');
         await this.page.goto(INSTAGRAM_URL, { waitUntil: 'networkidle2', timeout: 60000 });
@@ -476,7 +480,71 @@ class InstagramDebugPro {
         return true;
     }
 
-    async postToInstagram(message) {
+    async uploadImageToInstagram(message) {
+        const imagePath = process.env.INSTA_IMAGE_PATH;
+        let imageUploaded = false;
+        
+        if (imagePath) {
+            try {
+                console.log(`📸 Attempting to upload Instagram image: ${imagePath}`);
+                
+                // Multiple possible selectors for Instagram file inputs
+                const fileInputSelectors = [
+                    'input[type="file"]',
+                    'input[accept*="image"]',
+                    'input[accept*="video"]'
+                ];
+
+                let fileInput;
+                for (const selector of fileInputSelectors) {
+                    try {
+                        const inputs = await this.page.$$(selector);
+                        if (inputs.length > 0) {
+                            fileInput = inputs[inputs.length - 1]; // use last found input
+                            console.log(`✅ Found file input with selector: ${selector}`);
+                            break;
+                        }
+                    } catch (error) {
+                        console.log(`❌ File input selector ${selector} failed:`, error.message);
+                    }
+                }
+
+                if (fileInput) {
+                    console.log('📁 Uploading file to Instagram...');
+                    await fileInput.uploadFile(imagePath);
+                    imageUploaded = true;
+                    console.log('✅ Image upload initiated successfully');
+                    
+                    // Wait for upload to complete
+                    await this.humanDelay(3000, 5000);
+                    
+                    // Check if upload was successful
+                    const uploadSuccess = await this.page.evaluate(() => {
+                        const loadingElements = document.querySelectorAll('[role="progressbar"], [aria-label*="loading"], [data-testid*="loading"]');
+                        return loadingElements.length === 0 ||
+                               !document.querySelector('input[type="file"]:not([disabled])');
+                    });
+                    
+                    if (uploadSuccess) {
+                        await this.logStep('Instagram image upload', true, 'Image upload completed');
+                        return true;
+                    } else {
+                        console.log('⚠️ Image upload still processing, continuing with post...');
+                        return true; // Consider it successful if file was uploaded
+                    }
+                } else {
+                    console.log('❌ Could not find file input for uploading, continuing text-only');
+                }
+            } catch (uploadError) {
+                console.log('⚠️ Instagram image upload failed, continuing text-only:', uploadError.message);
+                await this.logStep('Instagram image upload', false, uploadError.message);
+            }
+        }
+        
+        return imageUploaded;
+    }
+
+    async postToInstagram(message = '') {
         try {
             console.log('\n📝 Attempting to post to Instagram...');
 
@@ -534,52 +602,68 @@ class InstagramDebugPro {
             // Wait for upload dialog
             await new Promise(resolve => setTimeout(resolve, 3000));
 
-            // For demo purposes, we'll close the upload dialog and continue with text post simulation
-            // In real implementation, you would upload an actual image file
-            await this.page.keyboard.press('Escape');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Look for caption input (Instagram's approach is different)
-            const captionSelectors = [
-                'textarea[aria-label*="caption"]',
-                'textarea[placeholder*="caption"]',
-                'textarea[placeholder*="description"]',
-                '[contenteditable="true"]'
-            ];
-
-            let captionFound = false;
-            for (const selector of captionSelectors) {
+            // Upload image if provided via environment variable
+            const imageUploaded = await this.uploadImageToInstagram(message);
+            
+            if (imageUploaded) {
+                console.log('📸 Image upload completed, watch for upload completion in UI...');
+                await this.humanDelay(2000, 3000);
+            } else {
+                // Close upload dialog only if no image file was provided or if upload failed
+                await this.humanDelay(1000, 2000); // Wait for dialog to fully load
                 try {
-                    await this.page.waitForSelector(selector, { visible: true, timeout: 5000 });
-                    await this.page.click(selector);
-                    
-                    // Clear and type caption
-                    await this.page.keyboard.down('Control');
-                    await this.page.keyboard.press('A');
-                    await this.page.keyboard.up('Control');
-                    await this.page.keyboard.press('Backspace');
-                    
-                    // Type caption with human-like delay
-                    console.log('⌨️  Typing caption with human-like delays...');
-                    for (const char of message) {
-                        await this.page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
-                    }
-                    
-                    captionFound = true;
-                    console.log('✅ Caption typed successfully');
-                    break;
-                } catch {
-                    continue;
+                    await this.page.keyboard.press('Escape');
+                    console.log('🖌️ Closed Instagram upload dialog');
+                    await this.humanDelay(500, 1000);
+                } catch (closeError) {
+                    console.log('⚠️ Could not close upload dialog, continuing:', closeError.message);
                 }
             }
 
-            if (!captionFound) {
-                console.log('❌ Could not find caption input');
-                return false;
-            }
+            // Only look for caption input if a message was provided
+            let captionFound = false;
+            if (message && message.trim().length > 0) {
+                const captionSelectors = [
+                    'textarea[aria-label*="caption"]',
+                    'textarea[placeholder*="caption"]',
+                    'textarea[placeholder*="Write a caption"]',
+                    'textarea[placeholder*="description"]',
+                    '[contenteditable="true"]'
+                ];
 
-            // Look for Share button
-            const shareButtonSelectors = [
+                for (const selector of captionSelectors) {
+                    try {
+                        await this.page.waitForSelector(selector, { visible: true, timeout: 5000 });
+                        await this.page.click(selector);
+                        
+                        // Clear and type caption
+                        await this.page.keyboard.down('Control');
+                        await this.page.keyboard.press('A');
+                        await this.page.keyboard.up('Control');
+                        await this.page.keyboard.press('Backspace');
+                        
+                        // Type caption with human-like delay
+                        console.log('⌨️  Typing caption with human-like delays...');
+                        for (const char of message) {
+                            await this.page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
+                        }
+                        
+                        captionFound = true;
+                        console.log('✅ Caption typed successfully');
+                        break;
+                    } catch {
+                        continue;
+                    }
+                }
+
+                if (message && message.trim().length > 0 && !captionFound) {
+                    console.log('⚠️ Could not find caption input, continuing without caption');
+                    // Allow continuation even if caption input not found
+                }
+            } // Close the caption condition bracket at intended level
+
+        // Look for Share button
+        const shareButtonSelectors = [
                 '[aria-label="Share"]',
                 'button:contains("Share")',
                 'button[type="submit"]',

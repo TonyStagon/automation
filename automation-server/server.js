@@ -639,7 +639,7 @@ app.post('/api/automation/run-twitter', async (req, res) => {
 
 // File upload endpoint
 const multer = require('multer');
-const fs = require('fs-extra');
+// const fs already declared at top level - don't redeclare
 const uploadsDir = path.join(__dirname, 'uploads');
 
 // Ensure uploads directory exists
