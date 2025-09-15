@@ -296,14 +296,37 @@ class EnhancedTwitterAutomation {
     }
 
     async login() {
+        // Add safety wrapper to prevent crash and maintain browser open
         try {
-            // Load cookies first
-            const hasCookies = await this.loadCookies();
+            console.log('🛠️ Starting login with enhanced safety wrapper...');
             
-            await this.page.goto('https://x.com', {
-                waitUntil: 'networkidle2',
-                timeout: 60000 // Increased from 30000 to 60000ms (1 minute)
-            });
+            // Check credentials before even initializing anything
+            if (!TWITTER_USERNAME || !TWITTER_PASSWORD) {
+                throw new Error('Twitter credentials not set in environment variables');
+            }
+
+            // Load cookies first with timeout safety
+            let hasCookies = false;
+            try {
+                hasCookies = await this.loadCookies();
+            } catch (cookieError) {
+                console.log('⚠️ Cookie loading failed, proceeding without cookies:', cookieError.message);
+            }
+            
+            // Safely navigate to homepage with comprehensive error handling
+            try {
+                await this.page.goto('https://x.com', {
+                    waitUntil: 'networkidle2',
+                    timeout: 120000 // 2 minutes max for homepage loading
+                });
+            } catch (navError) {
+                console.log('⚠️ Initial navigation to Twitter failed, trying dedicated login URL instead...');
+                // Fallback to login URL directly
+                await this.page.goto(TWITTER_URL, {
+                    waitUntil: 'networkidle2',
+                    timeout: 120000
+                });
+            }
 
             await this.humanDelay(3000, 5000);
             await this.simulateMouseMovement();
@@ -381,100 +404,125 @@ if (currentUrl.includes('login') || currentUrl.includes('signin')) {
     await this.page.goto(TWITTER_URL);
 }
 
-            // Find and fill username
+            // Find and fill username with enhanced error handling
             const usernameSelectors = [
-                'input[autocomplete="username"]',
-                'input[name="text"]',
-                'input[data-testid*="text"][type="text"]',
-                'input[placeholder*="email"][type="text"]',
-                'input[placeholder*="user"][type="text"]'
+                'input[autocomplete="username"][type="text"], input[autocomplete="username"]',
+                'input[name="text"][type="text"], input[name="text"]',
+                'input[data-testid*="text"][type="text" i]',
+                'input[placeholder*="User" i][type="text"], input[placeholder*="Email" i][type="text"], input[placeholder*="Phone" i][type="text"], input[placeholder*="Username" i][type="text"]',
+                'input[type="text"][autocomplete*="user"]',
+                '[data-testid="ocfEnterTextTextInput"] input[type="text"]'
             ];
 
-            const usernameInput = await this.waitForElement(usernameSelectors);
-            await this.typeHumanLike(usernameInput, TWITTER_USERNAME);
-            await this.logStep('Enter username/email', true);
+            console.log('🔍 Finding username input with selectors:', usernameSelectors);
+            
+            let usernameInput;
+            try {
+                usernameInput = await this.waitForElement(usernameSelectors, 30000, 3); // 30 second timeout, 3 retries
+                await this.typeHumanLike(usernameInput, TWITTER_USERNAME);
+                await this.logStep('Enter username/email', true);
+                await this.humanDelay(2000, 3000); // Wait after typing username
+            } catch (usernameError) {
+                console.error('❌ Failed to find or interact with username input:', usernameError.message);
+                await this.logStep('Enter username/email', false, usernameError.message);
+                
+                // Take screenshot for debugging
+                await this.page.screenshot({
+                    path: path.join(SCREENSHOT_DIR, 'username_input_error.png'),
+                    fullPage: true
+                });
+                
+                throw usernameError;
+            }
 
-            // Find and click Next button
+            // Find and click Next button - updated selectors
             const nextButtonSelectors = [
-                'button[type="submit"]',
-                'div[role="button"]',
-                '[data-testid*="Login"]',
-                '[data-testid*="Next"]',
-                '[data-testid*="next"]',
-                'div[data-testid="LoginForm_Login_Button"]',
-                'button[data-testid="LoginForm_Login_Button"]',
-                'div[role="button"][tabindex="0"]',
-                '[aria-label*="Next"]'
+                'button[type="submit"]:not([disabled]):not([aria-disabled="true"])',
+                'div[role="button"][tabindex="0"]:not([disabled]):not([aria-disabled="true"])',
+                '[data-testid*="Login"][role="button"]:not([disabled]):not([aria-disabled="true"])',
+                '[data-testid*="Next"][role="button"]:not([disabled]):not([aria-disabled="true"])',
+                '[data-testid="LoginForm_Login_Button"]:not([disabled])',
+                'button[data-testid="LoginForm_Login_Button"]:not([disabled])',
+                '[aria-label*="Next" i][role="button"]:not([disabled])',
+                'div[data-testid="ocfSignupEnterUsernameNextBtn"], div[data-testid="ocfEnterTextNextButton"]'
             ];
 
             console.log('🔍 Attempting to click Next button...');
-            console.log('🖱️ Taking screenshot before Next button interaction...');
             await this.page.screenshot({
                 path: path.join(SCREENSHOT_DIR, 'before_next_button_click.png'),
-                fullPage: false
+                fullPage: true
             });
             
-            // Check if element is really visible and interactable
-            const isActuallyVisible = await this.page.evaluate((el) => {
-                if (!el) return false;
-                const rect = el.getBoundingClientRect();
-                const style = window.getComputedStyle(el);
-                return rect.width > 0 && rect.height > 0 &&
-                       style.display !== 'none' &&
-                       style.visibility !== 'hidden' &&
-                       parseFloat(style.opacity) > 0.1;
-            }, nextButton);
+            // First find the next button before using it
+            console.log('🔍 Looking for Next button...');
+            const nextButton = await this.page.waitForSelector(nextButtonSelectors[0], {
+                timeout: 10000,
+                visible: true
+            });
             
-            if (!isActuallyVisible) {
-                console.log('⚠️ Next button may not be visible/ready - scrolling into view');
-                await this.page.evaluate(el => {
-                    if (el && el.scrollIntoView) {
-                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
+            if (nextButton) {
+                // Check if element is really visible and interactable
+                const isActuallyVisible = await this.page.evaluate((el) => {
+                    if (!el) return false;
+                    const rect = el.getBoundingClientRect();
+                    const style = window.getComputedStyle(el);
+                    return rect.width > 0 && rect.height > 0 &&
+                           style.display !== 'none' &&
+                           style.visibility !== 'hidden' &&
+                           parseFloat(style.opacity) > 0.1;
                 }, nextButton);
-                await this.humanDelay(1500, 2500);
-            }
-            
-            // Enhanced next button click with multiple strategies
-            let nextClicked = false;
-            let clickError = null;
-            
-            // Strategy 1: Regular click
-            try {
-                console.log('🔄 Trying standard click for Next button');
-                await nextButton.click();
-                nextClicked = true;
-            } catch (e) {
-                clickError = e;
-                console.log('❌ Standard click failed, trying JavaScript click');
                 
-                // Strategy 2: JavaScript click
+                if (!isActuallyVisible) {
+                    console.log('⚠️ Next button may not be visible/ready - scrolling into view');
+                    await this.page.evaluate(el => {
+                        if (el && el.scrollIntoView) {
+                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, nextButton);
+                    await this.humanDelay(1500, 2500);
+                }
+                
+                // Enhanced next button click with multiple strategies
+                let nextClicked = false;
+                let clickError = null;
+                
+                // Strategy 1: Regular click
                 try {
-                    await this.page.evaluate(el => el.click(), nextButton);
+                    console.log('🔄 Trying standard click for Next button');
+                    await nextButton.click();
                     nextClicked = true;
-                } catch (e2) {
-                    clickError = e2;
-                    console.log('❌ JavaScript click failed, trying keyboard');
+                } catch (e) {
+                    clickError = e;
+                    console.log('❌ Standard click failed, trying JavaScript click');
                     
-                    // Strategy 3: Keyboard navigation
+                    // Strategy 2: JavaScript click
                     try {
-                        await nextButton.focus();
-                        await this.humanDelay(500, 800);
-                        await this.page.keyboard.press('Enter');
+                        await this.page.evaluate(el => el.click(), nextButton);
                         nextClicked = true;
-                    } catch (e3) {
-                        clickError = e3;
-                        console.log('❌ Keyboard press failed for Next button');
+                    } catch (e2) {
+                        clickError = e2;
+                        console.log('❌ JavaScript click failed, trying keyboard');
+                        
+                        // Strategy 3: Keyboard navigation
+                        try {
+                            await nextButton.focus();
+                            await this.humanDelay(500, 800);
+                            await this.page.keyboard.press('Enter');
+                            nextClicked = true;
+                        } catch (e3) {
+                            clickError = e3;
+                            console.log('❌ Keyboard press failed for Next button');
+                        }
                     }
                 }
-            }
-            
-            if (nextClicked) {
-                await this.logStep('Click next button', true);
-                console.log('✅ Next button clicked successfully');
-                await this.humanDelay(5000, 7000); // Longer wait after Next click
-            } else {
-                throw new Error(`Next button click failed: ${clickError?.message || 'All strategies failed'}`);
+                
+                if (nextClicked) {
+                    await this.logStep('Click next button', true);
+                    console.log('✅ Next button clicked successfully');
+                    await this.humanDelay(5000, 7000); // Longer wait after Next click
+                } else {
+                    throw new Error(`Next button click failed: ${clickError?.message || 'All strategies failed'}`);
+                }
             }
 
             // Find and fill password
@@ -1065,8 +1113,30 @@ if (currentUrl.includes('login') || currentUrl.includes('signin')) {
 
         } catch (error) {
             console.error('❌ Automation error:', error.message);
+            await this.logStep('Overall Automation', false, error.message);
+            
+            // Take emergency screenshot
+            if (this.page) {
+                try {
+                    await this.page.screenshot({
+                        path: path.join(SCREENSHOT_DIR, 'automation_crashed.png'),
+                        fullPage: true
+                    });
+                    console.log('📸 Emergency screenshot saved');
+                } catch (screenshotError) {
+                    console.log('⚠️ Could not take emergency screenshot:', screenshotError.message);
+                }
+            }
         } finally {
-            await this.cleanup();
+            // Only close browser if we're sure we want to exit completely
+            const shouldCloseBrowser = !process.env.KEEP_BROWSER_OPEN && this.headless;
+            
+            if (shouldCloseBrowser) {
+                await this.cleanup();
+            } else {
+                console.log('⚡ Browser staying open for debugging');
+                console.log('💡 Set KEEP_BROWSER_OPEN=false and HEADLESS=true for automatic cleanup');
+            }
         }
 
         // Execution summary

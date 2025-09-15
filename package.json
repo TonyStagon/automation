@@ -8,7 +8,11 @@
         "server": "cd server && npm run dev",
         "build": "tsc -b && vite build",
         "lint": "eslint .",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "twitter-demo": "node twitter-demo-test.js",
+        "twitter-login": "node twitter-login-post-test.js",
+        "twitter": "node twitter.js",
+        "twitter-stealth": "node twitter-stealth-automation.js"
     },
     "dependencies": {
         "chronium": "^0.0.6",
