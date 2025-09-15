@@ -1,5 +1,3 @@
-# Automation Server - Start Guide
-
 ## Quick Start
 
 Start the automation server using one of the following commands:
